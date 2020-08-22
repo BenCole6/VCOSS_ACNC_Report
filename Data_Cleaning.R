@@ -96,11 +96,97 @@ for(col_index in 1:ncol(colnames_df)) {
 common_col_selector <- function(data) {
         
         selected_data <- select(data,
-                                common_cols)
+                                any_of(common_cols))
         
         return(selected_data)
 }
 
 ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
                                common_col_selector)
+
+
+##################################################
+##################################################
+## ---  Removing Invalid ABNs  ---------------- ##
+##################################################
+##################################################
+
+# Removing Invalid ABNs
+
+## Reference Keybreaker file
+
+ABN_Keybreaker <- read_excel("ABN Keybreaker.xlsx")
+
+## Function for checking ABNs
+
+ABN_Checker <- function(ABN_No) {
+        
+        sumproduct <- c()
+        
+        for(position in 1:nchar(ABN_No)) {
+                
+                number <- as.numeric(substr(ABN_No, position, position))  
+                
+                if(position == 1) {
+                        
+                        number <- as.numeric(number - 1)
+                        
+                }
+                
+                product <- (number * ABN_Keybreaker$Weighting[position])
+                
+                sumproduct <- sum(sumproduct, product)
+                
+        }
+        
+        if(sumproduct %% 89 == 0) {
+                
+                Check <- "Valid ABN"
+                
+        } else {
+                
+                Check <- "Invalid ABN"
+                
+        }
+        
+        return(Check)
+        
+}
+
+ABN_Validator <- function(dataframe, abn_colname = "abn") {
+        
+        Valid_ABN <- sapply(dataframe[[abn_colname]], ABN_Checker)
+        
+        dataframe <- cbind(dataframe, Valid_ABN = Valid_ABN)
+        
+        return(dataframe)
+        
+}
+
+ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+                               ABN_Validator)
+
+##################################################
+##################################################
+## ---  Filtering on Main Activity  ----------- ##
+##################################################
+##################################################
+
+
+main_act_present <- function(dataframe) {
+        
+        regex("main_activity", ignore_case = TRUE) %in%
+                make_clean_names(colnames(dataframe))
+        
+}
+
+mainactivity_check <- sapply(ACNC_Datasets_13to18,
+                             main_act_present)
+
+if(FALSE %in% mainactivity_check) {
+        stop(paste("Main activity is missing from",
+                   paste(names(mainactivity_check[which(mainactivity_check == FALSE)]),
+                         collapse = ", ")))
+}
+
 

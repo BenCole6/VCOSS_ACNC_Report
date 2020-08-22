@@ -1,0 +1,2904 @@
+---
+title: "Social Services Charities in Victoria"
+output:
+  html_document:
+    fig_height: 7
+    fig_width: 8
+    toc: true
+    number_sections: false
+    toc_depth: 2
+    toc_float:
+      smooth_scroll: true
+    includes:
+      in_header: logos_header.html
+mainfont: TradeGothic LT, sans-serif
+---
+
+<style>
+body{
+  
+  font-family: TradeGothic LT;
+  margin:0 auto;
+  
+}
+
+element.style{
+
+font-family: TradeGothic LT;
+
+}
+
+div.logos{
+
+  max-width:600px;
+  position:relative;
+  margin:0 auto;
+
+}
+
+</style>
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+
+# packages
+
+if(!("pacman" %in% rownames(installed.packages()))) {
+  
+  install.packages("pacman")
+  require(pacman)
+  
+} else {
+  
+  require(pacman)
+  
+}
+
+p_load(tidyverse,
+       rmarkdown,
+       plotly,
+       ggplotlyExtra,
+       ggrepel,
+       readxl,
+       janitor,
+       scales,
+       grid,
+       gridExtra,
+       lemon,
+       zoo,
+       knitr,
+       packcircles,
+       DT,
+       kableExtra)
+
+```
+
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+
+# utilities
+
+# setting global colour scheme
+
+## A single grey
+GreySingle <- "grey55"
+
+## A gradient of greys
+FSSIGreyGrad <- function(n_colours){div_gradient_pal(low = "grey30",
+                                                 mid = GreySingle,
+                                                 high = "grey80")(seq(0, 1, length.out = n_colours))}
+
+## A single green
+FSSIGreenSingle <- "#549041"
+
+## a gradient of greens
+FSSIGreenGrad <- function(n_colours){div_gradient_pal(low = "#3d6a2f",
+                                                      mid = FSSIGreenSingle,
+                                                      high = "#84c072")(seq(0, 1, length.out = n_colours))}
+
+
+## Setting a very light variant of FSSI green for backgrounds
+
+FSSIUltraLight <- "#96ffa2"
+
+## Universal qualitative palette
+
+FSSIQualPal <- function(n_colours){
+  
+  palette = c("#7ebaba", "#927bad", "#d2d682", "grey20", "#4953ff",
+              "#ffb349", "#34ad8b", "#af4f50", "gold2", "#345428",
+              "#c13080", "#7a5f2a", FSSIGreenSingle, "grey75")
+  
+  return(palette[1:n_colours])
+  
+}
+
+FSSIQualSingle <- function(nth_colour) {
+  
+  colour = FSSIQualPal(13)
+  return(colour[nth_colour])
+  
+}
+
+## Setting default font
+
+FSSIfont <- "TradeGothic LT"
+
+
+
+# useful function maybe
+
+m_round <- function(num, mult = 10) {
+  
+  round( (num+0.00001) / mult) * mult
+  
+}
+
+str_cleaner <- function(str_input) {
+  
+  
+  str_to_title(str_replace_all(str_input, "_", " "))
+  
+}
+
+str_clean_wrap <- function(str_input, n_characters = 20) {
+  
+  str_wrap(str_to_title(str_replace_all(str_input, "_", " ")),
+           width = n_characters)
+  
+}
+
+```
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+
+# reading in 2016 data
+
+VCOSS_ACNC_16 <- clean_names(read_excel("VCOSS Data/VCOSS - 2016 ACNC Data.xlsx"), "snake")
+
+## `main_activity` contains "Social services and SOCIAL_SERVICES
+
+VCOSS_ACNC_16$main_activity_2016 <- str_cleaner(VCOSS_ACNC_16$main_activity_2016)
+
+VCOSS_ACNC_16$charity_size <- str_to_title(VCOSS_ACNC_16$charity_size)
+
+# reading in 2017 data
+
+VCOSS_ACNC_17 <- clean_names(read_excel("VCOSS Data/VCOSS - 2017 ACNC Data.xlsx"), "snake")
+
+VCOSS_ACNC_17$main_activity <- str_cleaner(VCOSS_ACNC_17$main_activity)
+
+VCOSS_ACNC_17$charity_size <- str_to_title(VCOSS_ACNC_17$charity_size)
+
+## recoding any y or n cols to bool
+
+for(col_name in colnames(VCOSS_ACNC_16)) {
+  
+  if(c("n", "y") %in% unique(VCOSS_ACNC_16[[col_name]]) == c(TRUE, TRUE)) {
+    
+    VCOSS_ACNC_16[[col_name]] <- recode(VCOSS_ACNC_16[[col_name]],
+                                        "n" = FALSE,
+                                        "y" = TRUE)
+    
+    
+    
+  }
+}
+
+for(col_name in colnames(VCOSS_ACNC_17)) {
+  
+  if(c("n", "y") %in% unique(VCOSS_ACNC_17[[col_name]]) == c(TRUE, TRUE)) {
+    
+    VCOSS_ACNC_17[[col_name]] <- recode(VCOSS_ACNC_17[[col_name]],
+                                        "n" = FALSE,
+                                        "y" = TRUE)
+    
+    
+    
+  }
+}
+
+
+# Recoding "Emergency and Relief" in 2017 data to "Emergency Relief" to align with 2016
+
+VCOSS_ACNC_17$main_activity <- if_else(str_detect(VCOSS_ACNC_17$main_activity,
+                                                  regex("Emergency and Relief", ignore_case = TRUE)),
+                                       true = "Emergency Relief",
+                                       false = VCOSS_ACNC_17$main_activity)
+
+
+```
+
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+
+# Removing Invalid ABNs
+
+## Reference Keybreaker file
+
+ABN_Keybreaker <- read_excel("VCOSS Data/ABN Keybreaker.xlsx")
+
+## Function for checking ABNs
+
+ABN_Checker <- function(ABN_No) {
+  
+  sumproduct <- c()
+  
+  for(position in 1:nchar(ABN_No)) {
+    
+    number <- as.numeric(substr(ABN_No, position, position))  
+    
+    if(position == 1) {
+      
+      number <- as.numeric(number - 1)
+      
+    }
+    
+    product <- (number * ABN_Keybreaker$Weighting[position])
+    
+    sumproduct <- sum(sumproduct, product)
+    
+  }
+  
+  if(sumproduct %% 89 == 0) {
+    
+    Check <- "Valid ABN"
+    
+  } else {
+    
+    Check <- "Invalid ABN"
+    
+  }
+  
+  return(Check)
+  
+}
+
+ABN_Validator <- function(ABN_vector) {
+  
+  sapply(ABN_vector, ABN_Checker)
+  
+}
+
+
+
+VCOSS_ACNC_16 <- mutate(VCOSS_ACNC_16,
+                        ABN_Validation = ABN_Validator(abn))
+
+Invalid_ABNs_16 <- filter(VCOSS_ACNC_16,
+                          ABN_Validation == "Invalid ABN")
+
+VCOSS_ACNC_17 <- mutate(VCOSS_ACNC_17,
+                        ABN_Validation = ABN_Validator(abn))
+
+Invalid_ABNs_17 <- filter(VCOSS_ACNC_17,
+                          ABN_Validation == "Invalid ABN")
+
+
+## Filter out invalid ABNs from VCOSS dataframes
+
+VCOSS_ACNC_16 <- VCOSS_ACNC_16[which(!(VCOSS_ACNC_16$abn %in% Invalid_ABNs_16$abn)), ]
+
+VCOSS_ACNC_17 <- VCOSS_ACNC_17[which(!(VCOSS_ACNC_17$abn %in% Invalid_ABNs_17$abn)), ]
+
+
+```
+
+# Foreword
+
+The social services sector in Victoria is a multi billion dollar sector providing a range of services with the common focus of reducing poverty and disadvantage experienced by Victorians. The sector employs thousands of Victorians, making a substantial contribution to the state economy. There are a large number of charities and not-for-profit organisations that operate within the social services sector in Victoria, often deriving funding from very different sources than that of their privately-run counterparts.  
+
+As the social services sector in Victoria is so large and complex, this report dives into the data to better understand its composition and characteristics. This report and its data visualisations make use of data provided by the [Australian Charities and Not-for-profits Commission (ACNC)](https://www.acnc.gov.au) to examine the impact of charities and not-for-profit organisations in the social services sector in Victoria. This report also looks at changes in the nature of the charities and not-for-profits in the social services sector between 2016 and 2017.
+
+## Data {.tabset .tabset-fade}
+
+The ACNC Data for 2016 was previously accessed and cleaned by VCOSS and provided for analysis. The 2017 ACNC data was sourced and cleaned for this project to match the 2016 data. The ACNC data is self-reported information provided to the ACNC by charities. Please see **Appendix 1a** for more information on how the data was prepared to VCOSS standards.  
+The ACNC gave some charities the choice to report their information as a group or a block. These were included in the original data source and were linked to invalid ABN codes. Entries with invalid ABN codes were removed from the data for both 2016 and 2017. For more information on how invalid ABNs can be identified, please see the [ABN website](https://abr.business.gov.au/Help/AbnFormat). For details on how these criteria were used to identify and remove invalid ABNs from the datasets, please see **Appendix 1b**.
+To better understand the structure of the data, click on the tabs below to see truncated excerpts of each year's dataset. 
+
+### 2016 ACNC Data - Victorian Charities
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+VCOSS_ACNC_16_prettycolnames <- str_cleaner(str_replace_all(colnames(VCOSS_ACNC_16),
+                                                            pattern = "_", replacement = " "))
+
+datatable(head(arrange(VCOSS_ACNC_16, desc(total_revenue_2016)), 30),
+          rownames = FALSE, colnames = VCOSS_ACNC_16_prettycolnames,
+          class = "display compact",
+          options = list(bFilter = FALSE,
+                         lengthChange = FALSE,
+                         scrollY = "400px",
+                         scrollX = "600px")) %>% 
+  formatStyle(fontSize = "12px",
+              columns = 0:ncol(VCOSS_ACNC_16),
+              mark = ",", interval = 3)
+
+```
+
+### 2017 ACNC Data - Victorian Charities
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+VCOSS_ACNC_17_prettycolnames <- str_cleaner(str_replace_all(colnames(VCOSS_ACNC_17),
+                                                            pattern = "_", replacement = " "))
+
+datatable(head(arrange(VCOSS_ACNC_17, desc(total_revenue_2017)), 30),
+          rownames = FALSE, colnames = VCOSS_ACNC_16_prettycolnames,
+          class = "display compact",
+          options = list(bFilter = FALSE,
+                         lengthChange = FALSE,
+                         scrollY = "400px",
+                         scrollX = "600px")) %>% 
+  formatStyle(fontSize = "12px",
+              columns = 0:ncol(VCOSS_ACNC_16),
+              mark = ",", interval = 3)
+
+```
+
+## How to make the most of this report
+
+
+The below visualisations are all fully interactive; allowing you to focus and reset all of the elements that comprise each plot. Let your curiosity flow; click on legends to remove all other entries, double click legends to remove that individual entry, click and hold to zoom, use sliders to change year, reset and autoscale axes using the fading menu towards the top right.
+
+# Sector Size and Composition {.tabset .tabset-fade}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+## Creating counts for below text
+
+Count_MainAct_16 <- summarise(group_by(VCOSS_ACNC_16,
+                                       main_activity_2016),
+                              Count = n())
+
+Count_MainAct_17 <- summarise(group_by(VCOSS_ACNC_17,
+                                       main_activity),
+                              Count = n())
+
+SocServ16 <- Count_MainAct_16$Count[which(str_detect(Count_MainAct_16$main_activity_2016, "Social Services"))]
+
+TotalCount16 <- sum(Count_MainAct_16$Count)
+
+SocServ17 <- Count_MainAct_17$Count[which(str_detect(Count_MainAct_17$main_activity, "Social Services"))]
+
+TotalCount17 <- sum(Count_MainAct_17$Count)
+
+Count_MainAct_16 <- arrange(Count_MainAct_16, desc(Count))
+
+Count_MainAct_17 <- arrange(Count_MainAct_17, desc(Count))
+
+```
+
+Charities operating in the social services sector comprise more than one out of every five charities operating in Victoria. In 2016 this was `r comma(SocServ16, 1)` charities, which decreased slighty in 2017 to `r comma(SocServ17, 1)` (`r percent(SocServ16 / TotalCount16, 0.1)` and `r percent(SocServ17 / TotalCount17, 0.1)` of total charities, respectively).  
+
+In 2016, the largest number of charities were working in the Social Services sector with `r Count_MainAct_16$main_activity_2016[2]` recording the second-most number of charities at `r comma(Count_MainAct_16$Count[1], 1)`. These figures changed in 2017, with `r Count_MainAct_17$main_activity[1]` recording the greatest number of charities at `r comma(Count_MainAct_17$Count[1], 1)` while `r Count_MainAct_17$main_activity[2]` decreased slightly at `r comma(Count_MainAct_17$Count[2], 1)` charities.
+
+In 2016 and 2017,  small charities had a higher share than medium and large charities in numbers of social service charities. There were 731 small charities in 2016 and were slightly decreased to 709 in 2017. The number of large charities was decreased from 207 to 197 and the number of medium charities was decreased from 124 to 116 at the period of 2016 to 2017.
+
+## Yearly Totals {.tabset .tabset-pills}
+
+### Social Services and all other Sectors
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# 2016
+
+Counts_2016 <- mutate(VCOSS_ACNC_16,
+                      Soc_Serv_Bool = if_else(str_detect(main_activity_2016, 
+                                                         regex("social services",
+                                                               ignore_case = TRUE)),
+                                              true = "Social Services",
+                                              false = "Other sectors"))
+
+Counts_2016 <- summarise(group_by(Counts_2016,
+                                  Soc_Serv_Bool),
+                         Count = n())
+
+Counts_2016$Year <- 2016
+
+# 2017
+
+Counts_2017 <- mutate(VCOSS_ACNC_17,
+                      Soc_Serv_Bool = if_else(str_detect(main_activity, 
+                                                         regex("social services",
+                                                               ignore_case = TRUE)),
+                                              true = "Social Services",
+                                              false = "Other sectors"))
+
+Counts_2017 <- summarise(group_by(Counts_2017,
+                                  Soc_Serv_Bool),
+                         Count = n())
+
+Counts_2017$Year <- 2017
+
+Counts_1617 <- rbind(Counts_2016, Counts_2017)
+
+Counts_1617$Year <- as.ordered(Counts_1617$Year)
+
+gg2_Counts_1617 <- ggplot(Counts_1617,
+       aes(x = Year,
+           y = Count,
+           col = Soc_Serv_Bool,
+           group = Soc_Serv_Bool,
+           text = paste(sep = "\n",
+                        Soc_Serv_Bool,
+                        paste(comma(Count, 1), "charities")))) +
+  geom_point(size = 1.5) +
+  geom_line() +
+  scale_y_continuous("Number of Charities",
+                     labels = comma_format(1),
+                     limits = c(0, NA),
+                     breaks = pretty_breaks(4)) +
+  scale_x_discrete(expand = c(0.025, 0.025)) +
+  scale_colour_manual("",
+                      values = c(FSSIQualSingle(2), FSSIGreenSingle)) +
+  theme_minimal()
+
+ggplotly(gg2_Counts_1617,
+         tooltip = "text") %>% 
+  layout(font = list(family = FSSIfont,
+                     size = 12),
+         title = list(text = "Number of Victorian Charities in Social Services and Other Sectors",
+                      xref = "canvas",
+                      x = 0.1),
+         legend = list(title = list(text = "Sector",
+                                    standoff = 10,
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+### Breakdown per Main Activity
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# Bringing 2016 and 2017 together for a bar chart
+
+Vic_Char_Count17 <- summarise(group_by(VCOSS_ACNC_17,
+                                       main_activity = as.factor(main_activity),
+                                       .drop = FALSE),
+                              "Count" = n())
+
+Vic_Char_Count17$Year <- 2017
+
+Vic_Char_Count16 <- summarise(group_by(VCOSS_ACNC_16,
+                                       main_activity = as.factor(main_activity_2016)),
+                              "Count" = n())
+
+Vic_Char_Count16$Year <- 2016
+
+Vic_Char_Count_1617 <- rbind(Vic_Char_Count16, Vic_Char_Count17)
+
+Vic_Char_Count_1617$Year <- as.ordered(Vic_Char_Count_1617$Year)
+
+Vic_Char_Count_1617 <- replace_na(Vic_Char_Count_1617,
+                                  replace = list(main_activity = "Not Specified"))
+
+
+## bar chart
+
+gg_Vic_Char_Count_1617 <- ggplot(Vic_Char_Count_1617,
+                                 aes(x = Year, y = Count,
+                                     group = main_activity, col = str_wrap(main_activity, width = 25),
+                                     text = paste(sep = "\n",
+                                                  paste("Count:", comma(Count, 1)),
+                                                  main_activity))) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous("Number of Charities",
+                     labels = comma) +
+  scale_x_discrete(expand = c(0.05, 0.05)) +
+  scale_colour_manual("",
+                      values = c(rep(FSSIQualSingle(2), length(unique(Vic_Char_Count_1617$main_activity))-1),
+                                 FSSIGreenSingle)) +
+  theme_minimal()
+
+ggplotly(gg_Vic_Char_Count_1617,
+         tooltip = "text") %>% 
+  layout(font = list(family = FSSIfont,
+                     size = 12),
+         title = list(text = "Number of Victorian Charities per Main Activity, 2016 and 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         legend = list(font = list(size = 11),
+                       title = list(text = "Main Activity",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         margin = list(t = 40, b = 20))
+
+```
+
+## Change in Social Services Charity Sizes
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+## TODO: this too
+
+VIC_SocServ17 <- filter(VCOSS_ACNC_17,
+                        str_detect(main_activity, regex("social services", ignore_case = TRUE)))
+
+VIC_SocServ17$Year <- 2017
+
+VIC_SocServ17 <- select(VIC_SocServ17,
+                        main_activity, charity_size, Year)
+
+VIC_SocServ16 <- filter(VCOSS_ACNC_16,
+                        str_detect(main_activity_2016, regex("social services", ignore_case = TRUE)))
+
+VIC_SocServ16$Year <- 2016
+
+VIC_SocServ16 <- select(VIC_SocServ16,
+                        main_activity = main_activity_2016,
+                        charity_size, Year)
+
+VIC_SocServ_1617 <- rbind(VIC_SocServ16, VIC_SocServ17)
+
+VIC_SocServ_1617$Year <- as.ordered(VIC_SocServ_1617$Year)
+
+Sum_VIC_SocServ_1617 <- summarise(group_by(VIC_SocServ_1617,
+                                           Year, charity_size),
+                                  n_Charities = n())
+
+gg_Sum_VIC_SocServ_1617 <- ggplot(Sum_VIC_SocServ_1617,
+                                  aes(x = Year, y = n_Charities,
+                                      col = fct_rev(charity_size),
+                                      group = fct_rev(charity_size),
+                                      text = paste(sep = "\n",
+                                                   paste("Count:", n_Charities),
+                                                   paste("Charity size:", charity_size),
+                                                   paste("Year:", Year)))) +
+  geom_point(stat = "identity") +
+  stat_summary(fun.y = sum, geom = "line") +
+  scale_y_continuous("Number of Charities",
+                     labels = comma,
+                     limits = c(0, max(Sum_VIC_SocServ_1617$n_Charities)*1.1),
+                     breaks = extended_breaks(6)) +
+  scale_x_discrete("Year",
+                   expand = c(0.075, 0.075)) +
+  scale_color_manual("",
+                     values = FSSIQualPal(3)) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank())
+
+ggplotly(gg_Sum_VIC_SocServ_1617,
+         tooltip = "text") %>% 
+  layout(font = list(family = FSSIfont,
+                     size = 12),
+         title = list(text = "Number of Social Services Charities, 2016 to 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         legend = list(title = list(text = "Charity Size",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         margin = list(t = 50, b = 20))
+
+```
+
+# Sector Funding Sources {.tabset .tabset-fade}
+
+## Funding by Charity
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+## 2016
+
+VCOSS_ACNC_16_ordered <- arrange(VCOSS_ACNC_16, main_activity_2016)
+
+VCOSS_ACNC_16_ordered <- cbind(VCOSS_ACNC_16_ordered,
+                               circleProgressiveLayout(VCOSS_ACNC_16_ordered$total_revenue_2016))
+
+packing_16 <- circleLayoutVertices(layout = VCOSS_ACNC_16_ordered,
+                                   npoints = 0,
+                                   xysizecols = c("x", "y", "radius"),
+                                   sizetype = "area",
+                                   idcol = "charity_name")
+
+packing_16 <- left_join(packing_16,
+                        select(VCOSS_ACNC_16_ordered,
+                               charity_name,
+                               main_activity = main_activity_2016,
+                               total_revenue = total_revenue_2016,
+                               radius),
+                        by = c("id" = "charity_name"))
+
+packing_16$Year <- 2016
+
+## 2017
+
+VCOSS_ACNC_17_ordered <- arrange(VCOSS_ACNC_17, main_activity)
+
+VCOSS_ACNC_17_ordered <- cbind(VCOSS_ACNC_17_ordered,
+                               circleProgressiveLayout(VCOSS_ACNC_17_ordered$total_revenue_2017))
+
+packing_17 <- circleLayoutVertices(layout = VCOSS_ACNC_17_ordered,
+                                   npoints = 0,
+                                   xysizecols = c("x", "y", "radius"),
+                                   sizetype = "area",
+                                   idcol = "charity_name")
+
+packing_17 <- left_join(packing_17,
+                        select(VCOSS_ACNC_17_ordered,
+                               charity_name, main_activity,
+                               total_revenue = total_revenue_2017,
+                               radius),
+                        by = c("id" = "charity_name"))
+
+packing_17$Year <- 2017
+
+packing_1617 <- rbind(packing_16, packing_17)
+
+## plot
+
+gg_packing_16 <- ggplot(packing_1617) +
+  geom_point(aes(x = x,
+                 y = y,
+                 size = radius,
+                 fill = str_clean_wrap(factor(main_activity), 28),
+                 frame = Year,
+                 text = paste(sep = "\n",
+                              id,
+                              main_activity,
+                              paste(dollar(total_revenue), "total revenue"))),
+             colour = "grey66",
+             alpha = 0.8) +
+  scale_size_continuous("",
+                        range = c(2, 11)) +
+  scale_x_symmetric("",
+                    mid = 0,
+                    expand = c(0.075, 0.075)) +
+  scale_y_symmetric("",
+                    mid = 0,
+                    expand = c(0.05, 0.05)) +
+  scale_fill_manual("",
+                    values = FSSIQualPal(13)) +
+  coord_equal() +
+  theme_minimal() +
+  theme(panel.grid = element_blank(),
+        axis.text = element_blank())
+
+ggplotly(gg_packing_16,
+         tooltip = "text") %>% 
+  layout(legend = list(title = list(text = "Main Activity",
+                                    standoff = 10,
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         title = list(text = "Total Revenue for all Victorian Charities, 2016 to 2017",
+                      xref = "canvas",
+                      x = 0.1),
+         margin = list(t = 45, b = 10,
+                       l = 5, r = 5))
+
+```
+
+## Total Funding by Year {.tabset .tabset-pills}
+
+### Total Revenue Amount
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Revenue16 <- summarise(group_by(VCOSS_ACNC_16,
+                                main_activity = main_activity_2016),
+                       government_grants = sum(government_grants_2016,
+                                               na.rm =  TRUE),
+                       donations_and_bequests = sum(donations_and_bequests_2016,
+                                                    na.rm =  TRUE),
+                       all_other_revenue = sum(all_other_revenue_2016,
+                                               na.rm = TRUE),
+                       total_revenue = sum(total_revenue_2016,
+                                           na.rm = TRUE))
+
+Revenue16$Year <- 2016
+
+Revenue17 <- summarise(group_by(VCOSS_ACNC_17,
+                                main_activity = main_activity),
+                       government_grants = sum(government_grants_2017,
+                                               na.rm = TRUE),
+                       donations_and_bequests = sum(donations_and_bequests_2017,
+                                                    na.rm = TRUE),
+                       all_other_revenue = sum(all_other_revenue_2017,
+                                               na.rm = TRUE),
+                       total_revenue = sum(total_revenue_2017,
+                                           na.rm = TRUE))
+Revenue17$Year <- 2017
+
+Revenue1617 <- rbind(Revenue16, Revenue17)
+
+## All other sectors
+
+Other_Revenue1617 <- filter(Revenue1617,
+                            !str_detect(main_activity, regex("social services",
+                                                             ignore_case = TRUE)))
+
+Other_Revenue1617_long <- pivot_longer(Other_Revenue1617,
+                                       -c(main_activity, Year, total_revenue),
+                                       names_to = "revenue_source",
+                                       values_to = "revenue_amount")
+
+Total_Other_Revenue1617_long <- summarise(group_by(Other_Revenue1617_long,
+                                                   revenue_source, Year),
+                                          revenue_amount = sum(revenue_amount))
+
+
+# plot
+
+gg_Other_Revenue1617 <- ggplot(ungroup(Total_Other_Revenue1617_long),
+       aes(x = as.ordered(Year),
+           y = revenue_amount,
+           colour = str_clean_wrap(revenue_source, 18),
+           group = revenue_source,
+           text = paste(sep = "\n",
+                        str_clean_wrap(revenue_source),
+                        dollar(revenue_amount)))) +
+  geom_point() +
+  geom_line(stat = "identity") +
+  scale_y_continuous("Revenue amount",
+                     labels = dollar,
+                     limits = c(0, NA)) +
+  scale_x_discrete("Year",
+                   expand = c(0.05, 0.05)) +
+  scale_color_manual("",
+                     values = FSSIQualPal(3)) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank())
+
+pl_Other_Revenue1617 <- ggplotly(gg_Other_Revenue1617,
+                                 tooltip = "text") %>% 
+  layout(font = list(family = FSSIfont,
+                     size = 12),
+         legend = list(itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+## Social Services 
+
+SocServ_Revenue1617 <- filter(Revenue1617,
+                              str_detect(main_activity, regex("social services",
+                                                               ignore_case = TRUE)))
+
+
+SocServ_Revenue1617_long <- pivot_longer(SocServ_Revenue1617,
+                                       -c(main_activity, Year, total_revenue),
+                                       names_to = "revenue_source",
+                                       values_to = "revenue_amount")
+
+SocServ_Revenue1617_long <- mutate(group_by(SocServ_Revenue1617_long,
+                                          main_activity, Year),
+                                 revenue_proportion = revenue_amount / sum(revenue_amount,
+                                                                           na.rm = TRUE),
+                                 soc_serv_bool = if_else(str_detect(main_activity,
+                                                                    regex("social services",
+                                                                          ignore_case = TRUE)),
+                                                         true = "Social Services",
+                                                         false = "Other activities"))
+
+gg_SocServ_Revenue1617 <- ggplot(SocServ_Revenue1617_long,
+                                 aes(x = as.ordered(Year),
+                                     y = revenue_amount,
+                                     colour = str_clean_wrap(revenue_source, 18),
+                                     group = revenue_source,
+                                     text = paste(sep = "\n",
+                                                  str_clean_wrap(revenue_source),
+                                                  dollar(revenue_amount)))) +
+  geom_point() +
+  stat_summary(fun.y = sum, geom = "line") +
+  scale_y_continuous("Revenue amount",
+                     labels = dollar,
+                     limits = c(0, NA)) +
+  scale_x_discrete("Year",
+                   expand = c(0.05, 0.05)) +
+  scale_color_manual("",
+                     values = rev(FSSIQualPal(6)[4:6])) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank())
+
+pl_SocServ_Revenue1617 <- ggplotly(gg_SocServ_Revenue1617,
+                                   tooltip = "text") %>% 
+  layout(font = list(family = FSSIfont,
+                     size = 12))
+
+## bring together
+
+subplot(pl_Other_Revenue1617, pl_SocServ_Revenue1617,
+        nrows = 1, shareY = TRUE) %>% 
+  layout(title = list(text = "Victorian Social Services Revenue Sources",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         xaxis = list(title = list(text = "Year\nOther Sectors",
+                                   font = list(size = 13))),
+         xaxis2 = list(title = list(text = "Year\nSocial Services",
+                                   font = list(size = 13))),
+         legend = list(title = list(text = "Charity Size",
+                                    standoff = 10,
+                                    font = list(size = 14)),
+                       temclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         margin = list(t = 50, b = 20))
+
+
+## This seems like doubling up but it's used below
+
+Other_Revenue1617_long <- mutate(group_by(Other_Revenue1617_long,
+                                          main_activity, Year),
+                                 revenue_proportion = revenue_amount / sum(revenue_amount,
+                                                                           na.rm = TRUE),
+                                 soc_serv_bool = if_else(str_detect(main_activity,
+                                                                    regex("social services",
+                                                                          ignore_case = TRUE)),
+                                                         true = "Social Services",
+                                                         false = "Other activities"))
+
+## binding for use down below
+
+Revenue1617_long <- rbind(Other_Revenue1617_long,
+                          SocServ_Revenue1617_long)
+
+```
+
+### Proportion of Funding by Charity Size
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+## 2016 
+FundingSources_16_long <- pivot_longer(select(VCOSS_ACNC_16,
+                                              main_activity = main_activity_2016,
+                                              charity_size,
+                                              government_grants = government_grants_2016,
+                                              donations_and_bequests = donations_and_bequests_2016,
+                                              all_other_revenue = all_other_revenue_2016),
+                                       cols = c(government_grants,
+                                                donations_and_bequests,
+                                                all_other_revenue),
+                                       names_to = "funding_source",
+                                       values_to = "funding_amount")
+
+SocServ_Total_FundingSources_16 <- filter(FundingSources_16_long,
+                                          str_detect(main_activity, regex("social services",
+                                                                          ignore_case = TRUE)))
+
+SocServ_Total_FundingSources_16 <- summarise(group_by(SocServ_Total_FundingSources_16,
+                                                      charity_size, main_activity, funding_source),
+                                             funding_amount = sum(funding_amount))
+
+SocServ_Total_FundingSources_16$Year <- 2016
+
+## 2017 
+FundingSources_17_long <- pivot_longer(select(VCOSS_ACNC_17,
+                                              main_activity,
+                                              charity_size,
+                                              government_grants = government_grants_2017,
+                                              donations_and_bequests = donations_and_bequests_2017,
+                                              all_other_revenue = all_other_revenue_2017),
+                                       cols = c(government_grants,
+                                                donations_and_bequests,
+                                                all_other_revenue),
+                                       names_to = "funding_source",
+                                       values_to = "funding_amount")
+
+SocServ_Total_FundingSources_17 <- filter(FundingSources_17_long,
+                                          str_detect(main_activity, regex("social services",
+                                                                          ignore_case = TRUE)))
+
+SocServ_Total_FundingSources_17 <- summarise(group_by(SocServ_Total_FundingSources_17,
+                                                      charity_size, main_activity, funding_source),
+                                             funding_amount = sum(funding_amount))
+
+SocServ_Total_FundingSources_17$Year <- 2017
+
+
+SocServ_Total_FundingSources_1617 <- rbind(SocServ_Total_FundingSources_16,
+                                           SocServ_Total_FundingSources_17)
+
+SocServ_Total_FundingSources_1617 <- group_by(SocServ_Total_FundingSources_1617,
+                                              main_activity, charity_size, Year)
+
+SocServ_Total_FundingSources_1617 <- mutate(SocServ_Total_FundingSources_1617,
+                                            "funding_proportion" = (funding_amount / sum(funding_amount,
+                                                                                         na.rm = TRUE)))
+
+SocServ_Total_FundingSources_1617_CharSize <- summarise(group_by(SocServ_Total_FundingSources_1617,
+                                                                 charity_size, funding_source, Year),
+                                                        funding_amount = sum(funding_amount, na.rm = TRUE))
+
+SocServ_Total_FundingSources_1617_CharSize <- mutate(group_by(SocServ_Total_FundingSources_1617_CharSize,
+                                                              charity_size, Year),
+                                                     funding_proportion = (funding_amount / sum(funding_amount,
+                                                                                                na.rm = TRUE)))
+
+gg_SocServ_FundingSources_CharSize_1617 <- ggplot(SocServ_Total_FundingSources_1617_CharSize) +
+  geom_bar(aes(x = funding_proportion,
+               y = charity_size,
+               fill = str_clean_wrap(funding_source),
+               text = paste(sep = "\n",
+                            str_clean_wrap(funding_source),
+                            Year,
+                            dollar(funding_amount),
+                            percent(funding_proportion, 0.1))),
+           stat = "identity") +
+  scale_y_discrete("",
+                   labels = function(x) str_clean_wrap(x)) +
+  scale_x_continuous("Funding Proportion",
+                     labels = percent_format(1)) +
+  scale_fill_manual("",
+                    values = FSSIQualPal(6)[4:6]) +
+  facet_wrap(~Year,
+             scales = "free_x") +
+  theme_minimal()
+
+
+pl_SocServ_FundingSources_CharSize_1617 <- ggplotly(gg_SocServ_FundingSources_CharSize_1617,
+                                                    tooltip = "text") %>% 
+  layout(font = list(family = FSSIfont,
+                     size = 12),
+         yaxis = list(title = list(text = "Charity Size",
+                                   standoff = 10)),
+         title = list(text = "Social Services Funding Sources for each Charity Size",
+                      xref = "canvas",
+                      x = 0.1),
+         margin = list(t = 55))
+
+## 2016 
+FundingSources_16_long <- pivot_longer(select(VCOSS_ACNC_16,
+                                              main_activity = main_activity_2016,
+                                              charity_size,
+                                              government_grants = government_grants_2016,
+                                              donations_and_bequests = donations_and_bequests_2016,
+                                              all_other_revenue = all_other_revenue_2016),
+                                       cols = c(government_grants,
+                                                donations_and_bequests,
+                                                all_other_revenue),
+                                       names_to = "funding_source",
+                                       values_to = "funding_amount")
+
+FundingSources_16_long <- filter(FundingSources_16_long,
+                                 !str_detect(main_activity, regex("social services",
+                                                                  ignore_case = TRUE)))
+
+Total_FundingSources_16 <- summarise(group_by(FundingSources_16_long,
+                                              charity_size, main_activity, funding_source),
+                                     funding_amount = sum(funding_amount))
+
+Total_FundingSources_16$Year <- 2016
+
+
+## 2017
+
+FundingSources_17_long <- pivot_longer(select(VCOSS_ACNC_17,
+                                              main_activity,
+                                              charity_size,
+                                              government_grants = government_grants_2017,
+                                              donations_and_bequests = donations_and_bequests_2017,
+                                              all_other_revenue = all_other_revenue_2017),
+                                       cols = c(government_grants,
+                                                donations_and_bequests,
+                                                all_other_revenue),
+                                    names_to = "funding_source",
+                                    values_to = "funding_amount")
+
+FundingSources_17_long <- filter(FundingSources_17_long,
+                                 !str_detect(main_activity, regex("social services",
+                                                                  ignore_case = TRUE)))
+
+Total_FundingSources_17 <- summarise(group_by(FundingSources_17_long,
+                                              charity_size, main_activity, funding_source),
+                                     funding_amount = sum(funding_amount))
+
+Total_FundingSources_17$Year <- 2017
+
+Total_FundingSources_1617 <- rbind(Total_FundingSources_16, Total_FundingSources_17)
+
+Total_FundingSources_1617 <- group_by(Total_FundingSources_1617,
+                                      main_activity, charity_size, Year)
+
+Total_FundingSources_1617 <- mutate(Total_FundingSources_1617,
+                                    "funding_proportion" = (funding_amount / sum(funding_amount,
+                                                                                 na.rm = TRUE)))
+
+Total_FundingSources_1617_CharSize <- summarise(group_by(Total_FundingSources_1617,
+                                                         charity_size, funding_source, Year),
+                                                funding_amount = sum(funding_amount, na.rm = TRUE))
+
+Total_FundingSources_1617_CharSize <- mutate(group_by(Total_FundingSources_1617_CharSize,
+                                                      charity_size, Year),
+                                             funding_proportion = (funding_amount / sum(funding_amount,
+                                                                                        na.rm = TRUE)))
+
+gg_FundingSources_CharSize_1617 <- ggplot(Total_FundingSources_1617_CharSize) +
+  geom_bar(aes(x = funding_proportion,
+               y = charity_size,
+               fill = str_clean_wrap(funding_source),
+               text = paste(sep = "\n",
+                            str_clean_wrap(funding_source),
+                            Year,
+                            dollar(funding_amount),
+                            percent(funding_proportion, 0.1))),
+           stat = "identity") +
+  scale_y_discrete("",
+                   labels = function(x) str_clean_wrap(x)) +
+  scale_x_continuous("Funding Proportion",
+                     labels = percent_format(1)) +
+  scale_fill_manual("",
+                    values = FSSIQualPal(3)) +
+  facet_wrap(~Year,
+             scales = "free_x") +
+  theme_minimal()
+
+pl_FundingSources_CharSize_1617 <- ggplotly(gg_FundingSources_CharSize_1617,
+                                            tooltip = "text") %>% 
+  layout(font = list(family = FSSIfont,
+                     size = 12),
+         yaxis = list(title = list(text = "Charity Size",
+                                   standoff = 10)),
+         margin = list(t = 55))
+
+subplot(pl_FundingSources_CharSize_1617,
+        pl_SocServ_FundingSources_CharSize_1617,
+        nrows = 2, shareX = TRUE) %>% 
+  layout(title = list(text = "Funding Sources for each Charity Size",
+                      xref = "canvas",
+                      x = 0.1),
+         legend = list(title = list(text = "Funding Source",
+                                    standoff = 10,
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                      itemdoubleclick = "toggle"),
+         yaxis = list(title = list(text = "Charity Size\nOther Sectors")),
+         yaxis2 = list(title = list(text = "Charity Size\nSocial Services")),
+         xaxis = list(title = "Funding Proportion"),
+         xaxis2 = list(title = "Funding Proportion"))
+
+```
+
+## Funding Sources by Main Activity {.tabset .tabset-pills}
+
+### Total Funding
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+pl_OtherRevenue <- plot_ly(data = filter(Revenue1617_long,
+                                         !str_detect(main_activity,
+                                                     regex("social services", ignore_case = TRUE))),
+                           x = ~revenue_amount,
+                           y = ~str_clean_wrap(main_activity, 36),
+                           text = ~revenue_proportion,
+                           color = ~str_cleaner(revenue_source),
+                           legendgroup = ~str_cleaner(revenue_source),
+                           colors = FSSIQualPal(3),
+                           frame  = ~Year,
+                           hovertemplate = paste(sep = "<br>",
+                                                 "%{x:$,.0f} funding",
+                                                 "%{text:.1%} of total funding",
+                                                 "%{y}"),
+                           type = "bar") %>% 
+  layout(barmode = "stack",
+         xaxis = list(zeroline = FALSE,
+                      title = list(text = "Funding Amount"),
+                      tickprefix = "$"),
+         yaxis = list(title = list("Main Activity"),
+                      categoryorder = "category descending"),
+         title = list(text = "Total Funding Sources by Main Activity, 2016 to 2017",
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12))
+
+pl_SocServ_Revene <- plot_ly(data = filter(Revenue1617_long,
+                                           str_detect(main_activity,
+                                                      regex("social services", ignore_case = TRUE))),
+                             x = ~revenue_amount,
+                             y = ~str_clean_wrap(main_activity, 36),
+                             text = ~revenue_proportion,
+                             color = ~str_cleaner(revenue_source),
+                             legendgroup = ~str_cleaner(revenue_source),
+                             colors = FSSIQualPal(6)[4:6],
+                             frame  = ~Year,
+                             hovertemplate = paste(sep = "<br>",
+                                                   "%{x:$,.0f} funding",
+                                                   "%{text:.1%} of total funding",
+                                                   "%{y}"),
+                             type = "bar") %>% 
+  layout(barmode = "stack",
+         xaxis = list(zeroline = FALSE,
+                      title = list(text = "Funding Amount"),
+                      tickprefix = "$"),
+         yaxis = list(title = list("Main Activity"),
+                      categoryorder = "category descending"),
+         title = list(text = "Total Funding Sources by Main Activity, 2016 to 2017",
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12))
+
+subplot(pl_OtherRevenue, pl_SocServ_Revene,
+        nrows = 2,
+        heights = c(10/11, 1/11),
+        shareX = TRUE,
+        margin = 0) %>% 
+  layout(legend = list(title = list(text = "Revenue Source",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         title = list(text = "Total Funding Sources by Main Activity",
+                      pad = list(b = 10),
+                      xref = "canvas",
+                      x = 0.1),
+         margin = list(t = 66),
+         font = list(family = FSSIfont,
+                     size = 12),
+         yaxis = list(title = list(text = "Main Activity",
+                                   standoff = 25, size = 13)),
+         xaxis = list(range = list(0, 3.25*10^9)))
+
+```
+
+### Funding Proportions
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+gg_Other_Revenue_prop <- ggplot(filter(Revenue1617_long,
+                                    !str_detect(main_activity,
+                                                regex("social services",
+                                                      ignore_case = TRUE)))) +
+  geom_bar(aes(x = revenue_proportion,
+               y = fct_rev(main_activity),
+               group = revenue_source,
+               fill = str_clean_wrap(revenue_source, 16),
+               text = paste(sep = "\n",
+                            str_clean_wrap(main_activity, 20),
+                            str_clean_wrap(revenue_source, 20),
+                            percent(revenue_proportion, 0.1),
+                            dollar(revenue_amount))),
+           stat = "identity",
+           show.legend = FALSE, size = 1) +
+  scale_x_continuous("Proportion of Funding",
+                     labels = percent) +
+  scale_y_discrete("",
+                   labels = function(x) str_wrap(x, width = 25)) +
+  facet_rep_grid(~Year) +
+  scale_fill_manual(values = FSSIQualPal(3)) +
+  theme_minimal() +
+  theme(panel.grid.major.y = element_blank(),
+        strip.text = element_text(colour = NA),
+        strip.background = element_rect(fill = NA,
+                                        colour = NA),
+        panel.spacing.x = unit(1, "cm"),
+        legend.background = element_rect(fill = NA,
+                                         colour = NA))
+
+pl_Other_Revenue_prop <- ggplotly(gg_Other_Revenue_prop,
+                                  tooltip = "text")
+
+gg_SocServ_Revenue_prop <- ggplot(filter(Revenue1617_long,
+                                      str_detect(main_activity,
+                                                 regex("social services",
+                                                       ignore_case = TRUE)))) +
+  geom_bar(aes(x = revenue_proportion,
+               y = fct_rev(main_activity),
+               group = revenue_source,
+               fill = str_clean_wrap(revenue_source, 16),
+               text = paste(sep = "\n",
+                            str_clean_wrap(main_activity, 20),
+                            str_clean_wrap(revenue_source, 20),
+                            percent(revenue_proportion, 0.1),
+                            dollar(revenue_amount))),
+           stat = "identity",
+           show.legend = FALSE, size = 1) +
+  scale_x_continuous("Proportion of Funding",
+                     labels = percent) +
+  scale_y_discrete("",
+                   labels = function(x) str_wrap(x, width = 25)) +
+  facet_rep_grid(~Year) +
+  scale_fill_manual(values = FSSIQualPal(6)[4:6]) +
+  theme_minimal() +
+  theme(panel.grid.major.y = element_blank(),
+        strip.text = element_text(colour = NA),
+        strip.background = element_rect(fill = NA,
+                                        colour = NA),
+        panel.spacing.x = unit(1, "cm"),
+        legend.background = element_rect(fill = NA,
+                                         colour = NA))
+
+pl_SocServ_Revenue_prop <- ggplotly(gg_SocServ_Revenue_prop,
+                                    tooltip = "text")
+
+subplot(pl_Other_Revenue_prop, pl_SocServ_Revenue_prop,
+        nrows = 2,
+        heights = c(10/11, 1/11),
+        shareX = TRUE,
+        margin = 0) %>% 
+  layout(legend = list(title = list(text = "Revenue Source",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle",
+                       xanchor = "right",
+                       x = 1.25,
+                       y = 1),
+         title = list(text = "Total Funding Sources by Main Activity",
+                      pad = list(b = 10),
+                      xref = "canvas",
+                      x = 0.1),
+         margin = list(t = 66),
+         font = list(family = FSSIfont,
+                     size = 12),
+         yaxis = list(title = list(text = "Main Activity",
+                                   standoff = 25, size = 13))) %>% 
+  add_annotations(text = "2016",
+                  x = 0.5,
+                  y = 1.05,
+                  yref = "paper",
+                  xref = "x",
+                  xanchor = "middle",
+                  yanchor = "top",
+                  align = "center",
+                  showarrow = FALSE,
+                  align = "center",
+                  font = list(size = 11)) %>%
+  add_annotations(text = "2017",
+                  x = 0.5,
+                  y = 1.05,
+                  yref = "paper",
+                  xref = "x2",
+                  xanchor = "middle",
+                  yanchor = "top",
+                  align = "center",
+                  showarrow = FALSE,
+                  align = "center",
+                  font = list(size = 11))
+
+```
+
+
+
+# Workforce Composition {.tabset .tabset-fade}
+
+From 2016 to 2017, the dominant staff type in social service sector was changed from part-time to full-time. The number of casual staff was the smallest in 2016 and 2017 compared with other staff types. A slight decrease in number of casual employees was seen in the period of 2016 to 2017; from 8,258 to 8,222 respectively. There were changes in the number of part-time employees and the number of full-time employees as well. The number of part-time employees decreased from 15,220 to 14,570  and the number of full-time employees increased from 11,818 to 20,905.
+
+Civic and advocacy activites had the most volunteers in 2016 but had a huge drop from 77403 to 620 in 2017. In 2017, other education sectors got the highest numbers of volunteers. Social services were in the second place in both years and had a slightly decreasing from 75,605 to 70,289 people.
+
+Small charities of social service sectors rely the most on volunteers followed by medium and large charities. 
+
+Volunteers accounted for 68.2% in the social service workforce in 2016 and was changed to 61.7% in 2017.
+
+## Employees {.tabset .tabset-pills}
+
+### Total Staff Employment Type {.tabset .tabset-pills}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+SocServ_Staff_MainAct16 <- summarise(group_by(filter(VCOSS_ACNC_16,
+                                                     str_detect(main_activity_2016,
+                                                                regex("social services", ignore_case = TRUE))),
+                                              main_activity = main_activity_2016),
+                                     full_time = sum(staff_full_time_2016, na.rm = TRUE),
+                                     part_time = sum(staff_part_time_2016, na.rm = TRUE),
+                                     casual = sum(staff_casual_2016, na.rm = TRUE))
+
+SocServ_Staff_MainAct16_long <- pivot_longer(SocServ_Staff_MainAct16,
+                                             cols = c(full_time,
+                                                      part_time,
+                                                      casual),
+                                             names_to = "employment_type",
+                                             values_to = "employee_count")
+
+SocServ_Staff_MainAct16_long$Year <- 2016
+
+
+SocServ_Staff_MainAct17 <- summarise(group_by(filter(VCOSS_ACNC_17,
+                                                     str_detect(main_activity,
+                                                                regex("social services", ignore_case = TRUE))),
+                                              main_activity),
+                                     full_time = sum(staff_full_time_2017, na.rm = TRUE),
+                                     part_time = sum(staff_part_time_2017, na.rm = TRUE),
+                                     casual = sum(staff_casual_2017, na.rm = TRUE))
+
+SocServ_Staff_MainAct17_long <- pivot_longer(SocServ_Staff_MainAct17,
+                                             cols = c(full_time,
+                                                      part_time,
+                                                      casual),
+                                             names_to = "employment_type",
+                                             values_to = "employee_count")
+
+SocServ_Staff_MainAct17_long$Year <- 2017
+
+SocServ_Staff_MainAct_1617 <- rbind(SocServ_Staff_MainAct16_long, SocServ_Staff_MainAct17_long)
+
+SocServ_Staff_MainAct_1617$Year <- as.ordered(SocServ_Staff_MainAct_1617$Year)
+
+gg_SocServ_Staff_MainAct_1617 <- ggplot(SocServ_Staff_MainAct_1617,
+                                        aes(x = Year,
+                                            y = employee_count,
+                                            col = str_clean_wrap(employment_type),
+                                            group = str_clean_wrap(employment_type),
+                                            text = paste(sep = "\n",
+                                                         comma(employee_count),
+                                                         str_clean_wrap(employment_type)))) +
+  geom_point() +
+  stat_summary(fun.y = sum, geom = "line") +
+  scale_x_discrete("Year",
+                   expand = c(0.1, 0.1)) +
+  scale_y_continuous("",
+                     labels = comma,
+                     expand = c(0.15, 0.15),
+                     limits = c(0, NA)) +
+  scale_colour_manual("",
+                      values = FSSIQualPal(6)[4:6]) +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = "grey90",
+                                        colour = NA))
+
+ggplotly(gg_SocServ_Staff_MainAct_1617,
+         tooltip = "text") %>% 
+  layout(title = list(text = "Changes in Staff Counts by Work Loading in Social Services, 2016 to 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         margin = list(t = 80, b = 5,
+                       l = 5, r = 5,
+                       pad = 2),
+         yaxis = list(title = list(text = "Number of Staff",
+                                   standoff = 1)),
+         legend = list(title = list(text = "Employment Type",
+                                    font = list(size = 14)),
+                       orientation = "v",
+                       yanchor = "top",
+                       y = 1.05,
+                       xanchor = "right",
+                       x = 1.05))
+
+```
+
+
+### Total Staff by Employment Type and Charity Size
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+SocServ_Staff_CharSize_16 <- summarise(group_by(filter(VCOSS_ACNC_16,
+                                                     str_detect(main_activity_2016, 
+                                                                 regex("social services", ignore_case = TRUE))),
+                                              charity_size),
+                                     staff_part_time = sum(staff_part_time_2016, na.rm = TRUE),
+                                     staff_full_time = sum(staff_full_time_2016, na.rm = TRUE),
+                                     staff_casual = sum(staff_casual_2016, na.rm = TRUE),
+                                     staff_volunteers = sum(staff_volunteers_2016, na.rm = TRUE))
+
+SocServ_Staff_CharSize_16 <- pivot_longer(SocServ_Staff_CharSize_16,
+                                        cols = c(staff_part_time,
+                                                 staff_full_time,
+                                                 staff_casual,
+                                                 staff_volunteers),
+                                        names_to = "employment_type",
+                                        values_to = "employee_count")
+
+
+SocServ_Staff_CharSize_16$Year <- 2016
+
+## staff_casual_2017 and staff_volunteers are character variables
+
+VCOSS_ACNC_17$staff_casual_2017 <- as.numeric(VCOSS_ACNC_17$staff_casual_2017)
+
+VCOSS_ACNC_17$staff_volunteers <- as.numeric(VCOSS_ACNC_17$staff_volunteers)
+
+SocServ_Staff_CharSize_17 <- summarise(group_by(filter(VCOSS_ACNC_17,
+                                                     str_detect(main_activity,
+                                                                regex("social services", ignore_case = TRUE))),
+                                              charity_size),
+                                     staff_part_time = sum(staff_part_time_2017, na.rm = TRUE),
+                                     staff_full_time = sum(staff_full_time_2017, na.rm = TRUE),
+                                     staff_casual = sum(as.numeric(staff_casual_2017), na.rm = TRUE),
+                                     staff_volunteers = sum(as.numeric(staff_volunteers), na.rm = TRUE))
+
+
+SocServ_Staff_CharSize_17 <- pivot_longer(SocServ_Staff_CharSize_17,
+                                        cols = c(staff_part_time,
+                                                 staff_full_time,
+                                                 staff_casual,
+                                                 staff_volunteers),
+                                        names_to = "employment_type",
+                                        values_to = "employee_count")
+
+SocServ_Staff_CharSize_17$Year <- 2017
+
+SocServ_Staff_CharSize_1617 <- rbind(SocServ_Staff_CharSize_16, SocServ_Staff_CharSize_17)
+
+SocServ_Staff_CharSize_1617 <- mutate(group_by(SocServ_Staff_CharSize_1617,
+                                             Year, charity_size),
+                                    proportion = (employee_count / sum(employee_count, na.rm = TRUE)))
+
+gg_SocServ_Staff_CharSize_1617 <- ggplot(SocServ_Staff_CharSize_1617) +
+  geom_bar(aes(x = employee_count,
+               y = charity_size,
+               fill = str_clean_wrap(employment_type),
+               text = paste(sep = "\n",
+                            str_clean_wrap(employment_type),
+                            paste(comma(employee_count, 1), "employees"),
+                            percent(proportion, 0.1))),
+           stat = "identity") +
+  facet_rep_wrap(~Year) +
+  scale_fill_manual("Employment Type",
+                    values = FSSIQualPal(7)[4:7]) +
+  scale_y_discrete("") +
+  scale_x_continuous("Number of Employees",
+                     labels = comma) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(family = FSSIfont))
+
+pl_SocServ_Staff_CharSize_1617 <- ggplotly(gg_SocServ_Staff_CharSize_1617,
+                                   tooltip = "text") %>% 
+  layout(yaxis = list(title = list(text = "Charity Size",
+                                   standoff = 10)),
+         font = list(family = FSSIfont,
+                     size = 12))
+
+gg_SocServ_Staff_CharSize_1617_prop <- ggplot(SocServ_Staff_CharSize_1617) +
+  geom_bar(aes(x = proportion,
+               y = charity_size,
+               fill = str_clean_wrap(employment_type),
+               text = paste(sep = "\n",
+                            str_clean_wrap(employment_type),
+                            percent(proportion, 0.1),
+                            paste(comma(employee_count, 1)), "employees")),
+           stat = "identity",
+           show.legend = FALSE) +
+  facet_rep_wrap(~Year) +
+  scale_fill_manual("",
+                    values = FSSIQualPal(7)[4:7]) +
+  scale_y_discrete("") +
+  scale_x_continuous("Number of Employees",
+                     labels = percent) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(family = FSSIfont))
+
+pl_SocServ_Staff_CharSize_1617_prop <- ggplotly(gg_SocServ_Staff_CharSize_1617_prop,
+                                        tooltip = "text",
+                                        showlegend = FALSE) %>% 
+  layout(yaxis = list(title = list(text = "Charity Size",
+                                   standoff = 10)),
+         font = list(family = FSSIfont,
+                     size = 12))
+
+subplot(pl_SocServ_Staff_CharSize_1617, pl_SocServ_Staff_CharSize_1617_prop,
+        nrows = 2, margin = 0.075) %>% 
+  layout(title = list(text = "Social Services Staff Employment Types per Charity Size",
+                      xref = "canvas",
+                      x = 0.1),
+         yaxis = list(title = list(text = "Charity Size")),
+         yaxis2 = list(title = list(text = "Charity Size")),
+         xaxis = list(title = list(text = "Number of Employees",
+                                    standoff = 5)),
+         xaxis2 = list(title = list(text = "Number of Employees",
+                                    standoff = 5)),
+         xaxis3 = list(title = list(text = "Pecentage of Employees",
+                                    standoff = 5)),
+         xaxis4 = list(title = list(text = "Pecentage of Employees",
+                                    standoff = 5)),
+         font = list(family = FSSIfont,
+                     size = 12),
+         legend = list(itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+## Volunteers {.tabset .tabset-pills}
+
+### Total Volunteers
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Volunteers_MainAct_16 <- summarise(group_by(VCOSS_ACNC_16,
+                                            main_activity = main_activity_2016),
+                                   volunteers = sum(staff_volunteers_2016))
+
+Volunteers_MainAct_16$Year <- 2016
+
+Volunteers_MainAct_17 <- summarise(group_by(VCOSS_ACNC_17,
+                                            main_activity),
+                                   volunteers = sum(staff_volunteers))
+
+Volunteers_MainAct_17$Year <- 2017
+
+Volunteers_MainAct_1617 <- rbind(Volunteers_MainAct_16, Volunteers_MainAct_17)
+
+Volunteers_MainAct_1617$Year <- as.ordered(Volunteers_MainAct_1617$Year)
+
+gg_Volunteers_MainAct_1617 <- ggplot(Volunteers_MainAct_1617,
+                                     aes(x = Year,
+                                         y = volunteers,
+                                         colour = str_clean_wrap(main_activity),
+                                         group = main_activity,
+                                         text = paste(sep = "\n",
+                                                      comma(volunteers),
+                                                      str_clean_wrap(main_activity)))) +
+  geom_line() +
+  geom_point() +
+  scale_x_discrete(expand = c(0.05, 0.05)) +
+  scale_y_continuous("Number of Volunteers",
+                     labels = comma) +
+  scale_color_manual("Main Activity",
+                     values = c(rep(FSSIQualSingle(2),
+                                    length(unique(Volunteers_MainAct_1617$main_activity))-1),
+                                FSSIGreenSingle)) +
+  theme_minimal()
+
+ggplotly(gg_Volunteers_MainAct_1617,
+         tooltip = "text") %>% 
+  layout(title = list(text = "Number of Volunteers by Main Activity, 2016 to 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         legend = list(title = list(text = "Main Activity",
+                                    font = list(size = 14)),
+                       font = list(size = 11),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+
+### Volunteers and Paid Employees {.tabset .tabset-pills}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Volunteers_PaidStaff_2016 <- summarise(group_by(VCOSS_ACNC_16,
+                                                main_activity = main_activity_2016,
+                                                charity_size),
+                                       paid_staff = sum(staff_full_time_2016,
+                                                        staff_part_time_2016,
+                                                        staff_casual_2016,
+                                                        na.rm = TRUE),
+                                       volunteers = sum(staff_volunteers_2016))
+
+Volunteers_PaidStaff_2016$Year <- 2016
+
+Volunteers_PaidStaff_2017 <- summarise(group_by(VCOSS_ACNC_17,
+                                                main_activity, charity_size),
+                                       paid_staff = sum(staff_full_time_2017,
+                                                        staff_part_time_2017,
+                                                        staff_casual_2017,
+                                                        na.rm = TRUE),
+                                       volunteers = sum(staff_volunteers))
+
+Volunteers_PaidStaff_2017$Year <- 2017
+
+Volunteers_PaidStaff_1617 <- rbind(Volunteers_PaidStaff_2016, Volunteers_PaidStaff_2017)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+gg_SocServ_Volunteers_PaidStaff_1617 <- ggplot(filter(Volunteers_PaidStaff_1617,
+                                                      str_detect(main_activity,
+                                                                 regex("social services",
+                                                                       ignore_case = TRUE)))) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              linetype = 5,
+              col = "grey80",
+              size = 0.25) +
+  geom_point(aes(x = paid_staff,
+                 y = volunteers,
+                 size = fct_rev(charity_size),
+                 frame = Year,
+                 text = paste(sep = "\n",
+                              paste(charity_size, "charities"),
+                              paste(comma(volunteers), "volunteers"),
+                              paste(comma(paid_staff), "paid staff"),
+                              paste(percent(volunteers / (volunteers + paid_staff), 0.1),
+                                    "volunteer workforce"))),
+             colour = FSSIGreenSingle, alpha = 0.75,
+             line = "grey25") +
+  scale_x_continuous("Paid Staff",
+                     labels = comma) +
+  scale_y_continuous("Volunteers",
+                     labels = comma,
+                     breaks = pretty_breaks(5)) +
+  scale_size_discrete("",
+                      range = c(4, 8)) +
+  theme_minimal()
+
+ggplotly(gg_SocServ_Volunteers_PaidStaff_1617,
+         tooltip = "text") %>% 
+  add_annotations(text = "equal number volunteers to paid staff",
+                  textangle = -32.62,
+                  opacity = 0.5,
+                  showarrow = FALSE,
+                  xref = "x",
+                  x = 20000,
+                  yref = "y",
+                  y = 22500) %>% 
+  layout(legend = list(title = list(text = "Charity size",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         title = list(text = "Volunteers and Paid Staff Working for Social Services, 2016 to 2017",
+                      xref = "canvas",
+                      x = 0.1),
+         margin = list(t = 50,
+                       b = 10,
+                       l = 5,
+                       r = 5),
+         font = list(family = FSSIfont,
+                     size = 12))
+
+```
+
+### Volunteer Percentage of Workforce
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Volunteers_PaidStaff_1617_long <- pivot_longer(Volunteers_PaidStaff_1617,
+                                               cols = c(paid_staff, volunteers),
+                                               names_to = "staff_type",
+                                               values_to = "staff_count")
+
+Volunteers_PaidStaff_1617_long <- mutate(group_by(Volunteers_PaidStaff_1617_long,
+                                                  main_activity, charity_size, Year),
+                                         proportion = (staff_count / sum(staff_count)))
+
+activity <- unique(Volunteers_PaidStaff_1617_long$main_activity)
+
+plot_ly(data = filter(Volunteers_PaidStaff_1617_long,
+                      str_detect(main_activity,
+                                 regex("social services",
+                                       ignore_case = TRUE))),
+        type = "pie",
+        labels = ~str_cleaner(staff_type),
+        values = ~staff_count,
+        frame = ~Year,
+        hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[1],
+                                "<extra></extra>"),
+        marker = list(colors = c("rgb(84, 144, 65))",
+                                 "rgb(77, 234, 229"),
+                      line = list(color = "#cecece",
+                                  width = 0.85))) %>% 
+  layout(title = list(text = "Volunteer Workforce Share for Social Services, 2016 to 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         legend = list(title = list(text = "Staff employment type",
+                                    font = list(size = 14))))
+
+```
+
+
+# Health of Sector {.tabset .tabset-fade}
+
+The below plots look at the number of charities running a deficit, surplus, or breaking even in each year. To count as having broken even, the net deficit/surplus for the charity has to equal exactly $0.
+
+There were 539 charities in 2016 had net surplus, 406 charities had net debt and 117 charities that had net even.
+
+In 2017, the number of charities that had net surplus was decreased to 537, 403 charities had net debt and only 82 charities obteined net even.
+
+Numbers of charities that had net surplus were bigger than those that had net debt or even. There were the most charities that had net even in social service sector. 
+
+
+## Budget Status {.tabset .tabset-pills}
+
+### Social Services
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+SocServ_DebtSurplus_MainAct_16 <- summarise(group_by(filter(VCOSS_ACNC_16,
+                                                            str_detect(main_activity_2016,
+                                                                       regex("social services", 
+                                                                             ignore_case = TRUE))),
+                                                     main_activity = main_activity_2016),
+                                            net_debt = sum(net_surplus_deficit_2016 < 0),
+                                            net_surplus = sum(net_surplus_deficit_2016 > 0),
+                                            net_even = sum(net_surplus_deficit_2016 == 0))
+
+
+SocServ_DebtSurplus_MainAct_16$Year <- 2016
+
+SocServ_DebtSurplus_MainAct_17 <- summarise(group_by(filter(VCOSS_ACNC_17,
+                                                            str_detect(main_activity,
+                                                                       regex("social services", 
+                                                                             ignore_case = TRUE))),
+                                                     main_activity),
+                                            net_debt = sum(net_surplus_deficit_2017 < 0),
+                                            net_surplus = sum(net_surplus_deficit_2017 > 0),
+                                            net_even = sum(net_surplus_deficit_2017 == 0))
+
+SocServ_DebtSurplus_MainAct_17$Year <- 2017
+
+SocServ_DebtSurplus_MainAct_1617 <- rbind(SocServ_DebtSurplus_MainAct_16, SocServ_DebtSurplus_MainAct_17)
+
+SocServ_DebtSurplus_MainAct_1617_long <- pivot_longer(SocServ_DebtSurplus_MainAct_1617,
+                                              cols = c(net_debt,
+                                                       net_surplus,
+                                                       net_even),
+                                              names_to = "budget_status",
+                                              values_to = "count")
+
+SocServ_DebtSurplus_MainAct_1617_long$Year <- as.ordered(SocServ_DebtSurplus_MainAct_1617_long$Year)
+
+gg_SocServ_DebtSurplus <- ggplot(SocServ_DebtSurplus_MainAct_1617_long,
+                                 aes(x = Year,
+                                     y = count,
+                                     colour = str_cleaner(budget_status),
+                                     group = budget_status,
+                                     text = paste(sep = "\n",
+                                                  paste(comma(count, 1), "charities"),
+                                                  str_cleaner(budget_status)))) +
+  geom_point() +
+  geom_line() +
+  scale_x_discrete(expand = c(0.05, 0.05)) +
+  scale_y_continuous("Number of Charities",
+                     labels = comma,
+                     limits = c(0, NA)) +
+  scale_color_manual("",
+                     values = FSSIQualPal(6)[4:6]) +
+  theme_minimal()
+
+ggplotly(gg_SocServ_DebtSurplus,
+         tooltip = "text") %>% 
+  layout(title = list(text = "Count of Social Services Charities by Budget Status, 2016 - 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         margin = list(t = 80),
+         legend = list(title = list(text = "Budget status",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+### Charity Budget Status by Main Activity
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Other_DebtSurplus_MainAct_16 <- summarise(group_by(filter(VCOSS_ACNC_16,
+                                                          !str_detect(main_activity_2016,
+                                                                      regex("social services", 
+                                                                            ignore_case = TRUE))),
+                                                   main_activity = main_activity_2016),
+                                          net_debt = sum(net_surplus_deficit_2016 < 0),
+                                          net_surplus = sum(net_surplus_deficit_2016 > 0),
+                                          net_even = sum(net_surplus_deficit_2016 == 0))
+
+
+Other_DebtSurplus_MainAct_16$Year <- 2016
+
+Other_DebtSurplus_MainAct_17 <- summarise(group_by(filter(VCOSS_ACNC_17,
+                                                          !str_detect(main_activity,
+                                                                      regex("social services", 
+                                                                            ignore_case = TRUE))),
+                                                   main_activity),
+                                          net_debt = sum(net_surplus_deficit_2017 < 0),
+                                          net_surplus = sum(net_surplus_deficit_2017 > 0),
+                                          net_even = sum(net_surplus_deficit_2017 == 0))
+
+Other_DebtSurplus_MainAct_17$Year <- 2017
+
+Other_DebtSurplus_MainAct_1617 <- rbind(Other_DebtSurplus_MainAct_16, Other_DebtSurplus_MainAct_17)
+
+Other_DebtSurplus_MainAct_1617_long <- pivot_longer(Other_DebtSurplus_MainAct_1617,
+                                                    cols = c(net_debt,
+                                                             net_surplus,
+                                                             net_even),
+                                                    names_to = "budget_status",
+                                                    values_to = "count")
+
+Other_DebtSurplus_MainAct_1617_long$Year <- as.ordered(Other_DebtSurplus_MainAct_1617_long$Year)
+
+Other_DebtSurplus_MainAct_1617_long <- mutate(group_by(Other_DebtSurplus_MainAct_1617_long,
+                                                       main_activity, Year),
+                                              proportion = (count / sum(count, na.rm = TRUE)))
+
+gg_Other_DebtSurplus_prop <- ggplot(Other_DebtSurplus_MainAct_1617_long) +
+  geom_bar(aes(x = proportion,
+               y = fct_rev(str_clean_wrap(main_activity, 28)),
+               fill = fct_rev(str_cleaner(budget_status)),
+               text = paste(sep = "\n",
+                            percent(proportion, 0.1),
+                            paste(comma(count), "charities"),
+                            str_cleaner(budget_status))),
+           stat = "identity",
+           show.legend = FALSE) +
+  scale_fill_manual(values = FSSIQualPal(3)) +
+  facet_wrap(~Year) +
+  scale_x_continuous(" \nPercent",
+                     labels = percent) +
+  scale_y_discrete("") +
+  theme_minimal()  +
+  theme(panel.spacing.x = unit(1, "cm"))
+
+pl_Other_DebtSurplus_prop <- ggplotly(gg_Other_DebtSurplus_prop,
+         tooltip = "text") %>% 
+  layout(showlegend = TRUE,
+         title = list(text = "Percentage of Charities by Budget Status and Sector",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         yaxis = list(title = list(text = "Main Activity",
+                                   standoff = 1)),
+         margin = list(t = 40, b = 50,
+                       l = 5, r = 5))
+
+## Social Services
+
+SocServ_DebtSurplus_MainAct_1617_long <- mutate(group_by(SocServ_DebtSurplus_MainAct_1617_long,
+                                                         Year),
+                                                proportion = (count / sum(count)))
+
+gg_SocServ_DebtSurplus_prop <- ggplot(SocServ_DebtSurplus_MainAct_1617_long) +
+  geom_bar(aes(x = proportion,
+               y = fct_rev(str_clean_wrap(main_activity, 28)),
+               fill = fct_rev(str_cleaner(budget_status)),
+               text = paste(sep = "\n",
+                            percent(proportion, 0.1),
+                            paste(comma(count), "charities"),
+                            str_cleaner(budget_status))),
+           stat = "identity",
+           show.legend = FALSE) +
+  scale_fill_manual(values = FSSIQualPal(6)[4:6]) +
+  facet_wrap(~Year) +
+  scale_x_continuous(" \nPercent",
+                     labels = percent) +
+  scale_y_discrete("") +
+  theme_minimal()  +
+  theme(panel.spacing.x = unit(1, "cm"),
+        strip.text = element_text(colour = NA))
+
+pl_SocServ_DebtSurplus_prop <- ggplotly(gg_SocServ_DebtSurplus_prop,
+                                        tooltip = "text") %>% 
+  layout(showlegend = TRUE,
+         title = list(text = "Percentage of Charities by Budget Status and Sector",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         yaxis = list(title = list(text = "Main Activity",
+                                   standoff = 1)),
+         margin = list(t = 40, b = 50,
+                       l = 5, r = 5))
+
+subplot(pl_Other_DebtSurplus_prop, pl_SocServ_DebtSurplus_prop,
+        nrows = 2, margin = 0,
+        shareX = TRUE,
+        heights = c(10/11, 1/11)) %>% 
+  layout(legend = list(title = list(text = "Budget status",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+## National and International Grants & Donations {.tabset .tabset-pills}
+
+### Total Grants
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Grants_MainAct_16 <- summarise(group_by(VCOSS_ACNC_16,
+                                        main_activity = main_activity_2016),
+                               for_use_in_australia = sum(grants_and_donations_made_for_use_in_australia_2016,
+                                                          na.rm = TRUE),
+                               for_use_outside_australia = sum(grants_and_donations_made_for_use_outside_australia_2016,
+                                                               na.rm = TRUE))
+
+Grants_MainAct_16$Year <- 2016
+
+Grants_MainAct_17 <- summarise(group_by(VCOSS_ACNC_17,
+                                        main_activity),
+                               for_use_in_australia = sum(grants_and_donations_made_for_use_in_australia_2017,
+                                                          na.rm = TRUE),
+                               for_use_outside_australia = sum(grants_and_donations_made_for_use_outside_australia_2017,
+                                                               na.rm = TRUE))
+
+
+Grants_MainAct_17$Year <- 2017
+
+Grants_MainAct_1617 <- rbind(Grants_MainAct_16, Grants_MainAct_17)
+
+Grants_MainAct_1617$Year <- factor(Grants_MainAct_1617$Year)
+
+Grants_MainAct_1617_long <- pivot_longer(Grants_MainAct_1617,
+                                         cols = c(for_use_in_australia,
+                                                  for_use_outside_australia),
+                                         names_to = "grant_use",
+                                         values_to = "grant_amount")
+
+Grants_MainAct_1617_long <- arrange(Grants_MainAct_1617_long,
+                                    desc(grant_amount))
+
+Grants_MainAct_1617_long$main_activity <- as.ordered(Grants_MainAct_1617_long$main_activity)
+
+Grants_MainAct_1617_long$SocServ <- if_else(str_detect(Grants_MainAct_1617_long$main_activity,
+                                                       regex("social services",
+                                                             ignore_case = TRUE)),
+                                            true = TRUE, false = FALSE)
+
+gg_Grants_MainAct_1617 <- ggplot(Grants_MainAct_1617_long) +
+  geom_bar(aes(x = grant_amount,
+               y = fct_rev(fct_inorder(str_clean_wrap(main_activity, 28))),
+               fill = str_clean_wrap(grant_use),
+               group = grant_use,
+               text = paste(sep = "\n",
+                            str_cleaner(grant_use),
+                            dollar(grant_amount))),
+           size = 1,
+           stat = "identity") +
+  facet_wrap(~ Year) +
+  scale_x_continuous(" \nTotal Grants",
+                     labels = dollar_format(scale = 0.000001,
+                                            suffix = "m"),
+                     limits = c(0, NA)) +
+  scale_y_discrete("") +
+  scale_fill_manual(values = FSSIQualPal(2)) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        panel.grid.major.y = element_blank(),
+        legend.background = element_rect(colour = NA,
+                                         fill = NA))
+
+ggplotly(gg_Grants_MainAct_1617,
+                 tooltip = "text") %>% 
+  layout(showlegend = TRUE,
+         title = list(text = "Grants and Donations for Use In and Outside Australia by Main Activity, 2016 to 2017",
+                      xref = "canvas",
+                      x = 0.1),
+         legend = list(title = list(text = "Grant use",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle",
+                       font = list(size = 12)),
+         font = list(family = FSSIfont,
+                     size = 12),
+         margin = list(t = 40,
+                       b = 45),
+         yaxis = list(title = list(text = "Main Activity",
+                                   standoff = 1)))
+
+```
+
+
+### Social Services
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Grants_InOut_MainAct_16 <- summarise(group_by(filter(VCOSS_ACNC_16,
+                                                     str_detect(main_activity_2016,
+                                                                regex("social services",
+                                                                      ignore_case = TRUE))),
+                                              main_activity = main_activity_2016),
+                                     for_use_in_australia = sum(grants_and_donations_made_for_use_in_australia_2016,
+                                                         na.rm = TRUE),
+                                     for_use_outside_australia = sum(grants_and_donations_made_for_use_outside_australia_2016,
+                                                          na.rm = TRUE))
+
+
+Grants_InOut_MainAct_16$Year <- 2016
+
+Grants_InOut_MainAct_17 <- summarise(group_by(filter(VCOSS_ACNC_17,
+                                                     str_detect(main_activity,
+                                                                regex("social services",
+                                                                      ignore_case = TRUE))),
+                                              main_activity),
+                                     for_use_in_australia = sum(grants_and_donations_made_for_use_in_australia_2017,
+                                                         na.rm = TRUE),
+                                     for_use_outside_australia = sum(grants_and_donations_made_for_use_outside_australia_2017,
+                                                          na.rm = TRUE))
+
+
+Grants_InOut_MainAct_17$Year <- 2017
+
+Grants_InOut_MainAct_1617 <- rbind(Grants_InOut_MainAct_16, Grants_InOut_MainAct_17)
+
+Grants_InOut_MainAct_1617$Year <- as.ordered(Grants_InOut_MainAct_1617$Year)
+
+Grants_InOut_MainAct_1617_long <- pivot_longer(Grants_InOut_MainAct_1617,
+                                               cols = c(for_use_in_australia,
+                                                        for_use_outside_australia),
+                                               names_to = "grant_source",
+                                               values_to = "grant_amount")
+
+gg_Grants_InOut_MainAct_1617 <- ggplot(Grants_InOut_MainAct_1617_long,
+                                       aes(x = Year,
+                                           y = grant_amount,
+                                           colour = str_clean_wrap(grant_source),
+                                           group = grant_source,
+                                           text = paste("\n",
+                                                        dollar(grant_amount,
+                                                               1),
+                                                        str_cleaner(grant_source)))) +
+  geom_line() +
+  geom_point() +
+  scale_x_discrete(expand = c(0.05, 0.05)) +
+  scale_y_continuous("Grant Amount",
+                     labels = dollar_format(scale = 0.000001,
+                                            suffix = "m")) +
+  scale_color_manual("",
+                     values = FSSIQualPal(2)) +
+  theme_minimal()
+
+ggplotly(gg_Grants_InOut_MainAct_1617,
+         tooltip = "text") %>% 
+  layout(title = list(text = "Grant Use for Social Services, 2016 to 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         legend = list(title = list(text = "Grant use",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+
+### Grants by Charity Size
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Grants_CharSize_16 <- summarise(group_by(VCOSS_ACNC_16,
+                                         charity_size, main_activity = main_activity_2016),
+                                for_use_in_australia = sum(grants_and_donations_made_for_use_in_australia_2016,
+                                                           na.rm = TRUE),
+                                for_use_outside_australia = sum(grants_and_donations_made_for_use_outside_australia_2016,
+                                                                na.rm = TRUE))
+
+
+Grants_CharSize_16$Year <- 2016
+
+Grants_CharSize_17 <- summarise(group_by(VCOSS_ACNC_17,
+                                         charity_size, main_activity),
+                                for_use_in_australia = sum(grants_and_donations_made_for_use_in_australia_2017,
+                                                           na.rm = TRUE),
+                                for_use_outside_australia = sum(grants_and_donations_made_for_use_outside_australia_2017,
+                                                                na.rm = TRUE))
+
+Grants_CharSize_17$Year <- 2017
+
+Grants_CharSize_1617 <- rbind(Grants_CharSize_16, Grants_CharSize_17)
+
+Grants_CharSize_1617 <- pivot_longer(Grants_CharSize_1617,
+                                     cols = c(for_use_in_australia,
+                                              for_use_outside_australia),
+                                     names_to = "grant_use",
+                                     values_to = "grant_amount")
+
+Grants_CharSize_1617$SocServ <- if_else(str_detect(Grants_CharSize_1617$main_activity,
+                                                   regex("social services",
+                                                         ignore_case = TRUE)),
+                                                   true = "Social Services", false = "Other Sectors")
+
+Grants_CharSize_1617_prop <- summarise(group_by(Grants_CharSize_1617,
+                                                charity_size, SocServ, Year, grant_use),
+                                       grant_amount = sum(grant_amount))
+
+Grants_CharSize_1617_prop <- mutate(group_by(Grants_CharSize_1617_prop,
+                                             charity_size, SocServ, Year),
+                                    proportion = (grant_amount / sum(grant_amount)))
+
+
+gg_Grants_CharSize_1617 <- ggplot(Grants_CharSize_1617_prop) +
+  geom_bar(aes(x = fct_rev(charity_size),
+               y = grant_amount,
+               fill = str_clean_wrap(grant_use),
+               text = paste(sep = "\n",
+                            dollar(grant_amount),
+                            percent(proportion, 0.1))),
+           stat = "identity") +
+  facet_rep_wrap(SocServ ~ Year,
+                 scales = "free_y") +
+  scale_fill_manual("Grant use",
+                    values = FSSIQualPal(2)) +
+  scale_x_discrete(" \nCharity Size") +
+  scale_y_continuous("Total Grants\n\n ",
+                     labels = dollar_format(scale = 0.000001, suffix = "m")) +
+  theme_minimal() +
+  theme(panel.spacing.y = unit(2, "cm"),
+        panel.spacing.x = unit(1, "cm"),
+        axis.ticks.length.x = unit(2, "mm"))
+
+ggplotly(gg_Grants_CharSize_1617,
+         tooltip = "text") %>% 
+  layout(font = list(family = FSSIfont,
+                     size = 12),
+         title = list(text = "Grants by Country Use and Charity Size",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         margin = list(t = 75,
+                       b = 50),
+         legend = list(itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+gg_Grants_CharSize_1617_prop <- ggplot(Grants_CharSize_1617_prop) +
+  geom_bar(aes(x = proportion,
+               y = fct_rev(charity_size),
+               fill = str_clean_wrap(grant_use),
+               text = paste(sep = "\n",
+                            percent(proportion, 0.1),
+                            dollar(grant_amount))),
+           stat = "identity") +
+  facet_rep_wrap(SocServ ~ Year) +
+  scale_fill_manual("",
+                    values = FSSIQualPal(2)) +
+  scale_x_continuous(" \nPercentage of Grants",
+                     labels = percent) +
+  scale_y_discrete(" \nCharity Size") +
+  theme_minimal() +
+  theme(panel.spacing.y = unit(2, "cm"),
+        axis.ticks.length.x = unit(2, "mm"))
+
+ggplotly(gg_Grants_CharSize_1617_prop,
+         tooltip = "text") %>% 
+  layout(title = list(text = "Percentage of Grants by Country Use and Charity Size",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         margin = list(t = 75,
+                       b = 50),
+         legend = list(title = list(text = "Grant use",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+
+# Appendices
+
+## Appendix 1 - Data Cleaning
+
+### 1a - VCOSS Cleaning Guidelines
+
+<iframe src="../../VCOSS ACNC Data Cleaning Guidelines.pdf" width="800" height="600"></iframe>
+
+### 1b - Identifying and Removing Invalid ABNs
+
+Please see the [Australian Business Register website](https://abr.business.gov.au/Help/AbnFormat) for more information on identifying invalid ABNs.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Removing Invalid ABNs
+
+## Reference Keybreaker file
+
+ABN_Keybreaker <- read_excel("VCOSS Data/ABN Keybreaker.xlsx")
+
+kable(ABN_Keybreaker,
+      caption = "ABN Format Guide") %>% 
+  kable_styling(bootstrap_options = c("striped"),
+                full_width = FALSE)
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, eval=FALSE}
+## Function for checking ABNs
+
+ABN_Checker <- function(ABN_No) {
+  
+  sumproduct <- c()
+  
+  for(position in 1:nchar(ABN_No)) {
+    
+    number <- as.numeric(substr(ABN_No, position, position))  
+    
+    if(position == 1) {
+      
+      number <- as.numeric(number - 1)
+      
+    }
+    
+    product <- (number * ABN_Keybreaker$Weighting[position])
+    
+    sumproduct <- sum(sumproduct, product)
+    
+  }
+  
+  if(sumproduct %% 89 == 0) {
+    
+    Check <- "Valid ABN"
+    
+  } else {
+    
+    Check <- "Invalid ABN"
+    
+  }
+  
+  return(Check)
+  
+}
+
+ABN_Validator <- function(ABN_vector) {
+  
+  sapply(ABN_vector, ABN_Checker)
+  
+}
+
+
+
+VCOSS_ACNC_16 <- mutate(VCOSS_ACNC_16,
+                        ABN_Validation = ABN_Validator(abn))
+
+Invalid_ABNs_16 <- filter(VCOSS_ACNC_16,
+                          ABN_Validation == "Invalid ABN")
+
+VCOSS_ACNC_17 <- mutate(VCOSS_ACNC_17,
+                        ABN_Validation = ABN_Validator(abn))
+
+Invalid_ABNs_17 <- filter(VCOSS_ACNC_17,
+                          ABN_Validation == "Invalid ABN")
+
+
+## Filter out invalid ABNs from VCOSS dataframes
+
+VCOSS_ACNC_16 <- VCOSS_ACNC_16[which(!(VCOSS_ACNC_16$abn %in% Invalid_ABNs_16$abn)), ]
+
+VCOSS_ACNC_17 <- VCOSS_ACNC_17[which(!(VCOSS_ACNC_17$abn %in% Invalid_ABNs_17$abn)), ]
+
+
+```
+
+## Appendix 2 - Extra Visualisations for Other Sectors
+
+### 2a - Sector Size and Composition
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+## TODO: this too
+
+VIC_Others17 <- filter(VCOSS_ACNC_17,
+                        !str_detect(main_activity, regex("social services", ignore_case = TRUE)))
+
+VIC_Others17$Year <- 2017
+
+VIC_Others17 <- select(VIC_Others17,
+                        main_activity, charity_size, Year)
+
+VIC_Others16 <- filter(VCOSS_ACNC_16,
+                        !str_detect(main_activity_2016, regex("social services", ignore_case = TRUE)))
+
+VIC_Others16$Year <- 2016
+
+VIC_Others16 <- select(VIC_Others16,
+                        main_activity = main_activity_2016,
+                        charity_size, Year)
+
+VIC_Others_1617 <- rbind(VIC_Others16, VIC_Others17)
+
+VIC_Others_1617$Year <- as.ordered(VIC_Others_1617$Year)
+
+Sum_VIC_Others_1617 <- summarise(group_by(VIC_Others_1617,
+                                           Year, charity_size, main_activity),
+                                  n_Charities = n())
+
+gg_Sum_VIC_Others_1617 <- ggplot(Sum_VIC_Others_1617,
+                                  aes(x = Year, y = n_Charities,
+                                      col = fct_rev(charity_size),
+                                      group = fct_rev(charity_size),
+                                      text = paste(sep = "\n",
+                                                   paste("Count:", n_Charities),
+                                                   paste("Charity size:", charity_size),
+                                                   paste("Year:", Year)))) +
+  geom_point(stat = "identity") +
+  facet_rep_wrap(~ str_clean_wrap(main_activity, 36),
+                 scales = "free_y",
+                 repeat.tick.labels = TRUE) +
+  stat_summary(fun.y = sum, geom = "line") +
+  scale_y_continuous("Number of Charities",
+                     labels = comma,
+                     limits = c(0, NA),
+                     breaks = extended_breaks(6)) +
+  scale_x_discrete(" \nYear",
+                   expand = c(0.05, 0.05)) +
+  scale_color_manual("",
+                     values = rev(FSSIQualPal(3))) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank(),
+        panel.spacing.y = unit(2, "cm"),
+        panel.spacing.x = unit(1, "cm"),
+        axis.ticks.length.x = unit(2, "mm"))
+
+ggplotly(gg_Sum_VIC_Others_1617,
+         tooltip = "text", shareY = FALSE) %>% 
+  layout(title = list(text = "Number of Charities in Other Sectors, 2016 to 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         legend = list(title = list(text = "Charity Size",
+                                    font = list(size = 12)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         margin = list(t = 80,
+                       l = 20,
+                       b = 50))
+
+```
+
+### 2b - Workforce Composition
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Other_Staff_CharSize_16 <- summarise(group_by(filter(VCOSS_ACNC_16,
+                                                     !str_detect(main_activity_2016, 
+                                                                 regex("social services", ignore_case = TRUE))),
+                                              charity_size),
+                                     staff_part_time = sum(staff_part_time_2016, na.rm = TRUE),
+                                     staff_full_time = sum(staff_full_time_2016, na.rm = TRUE),
+                                     staff_casual = sum(staff_casual_2016, na.rm = TRUE),
+                                     staff_volunteers = sum(staff_volunteers_2016, na.rm = TRUE))
+
+Other_Staff_CharSize_16 <- pivot_longer(Other_Staff_CharSize_16,
+                                        cols = c(staff_part_time,
+                                                 staff_full_time,
+                                                 staff_casual,
+                                                 staff_volunteers),
+                                        names_to = "employment_type",
+                                        values_to = "employee_count")
+
+
+Other_Staff_CharSize_16$Year <- 2016
+
+## staff_casual_2017 and staff_volunteers are character variables
+
+VCOSS_ACNC_17$staff_casual_2017 <- as.numeric(VCOSS_ACNC_17$staff_casual_2017)
+
+VCOSS_ACNC_17$staff_volunteers <- as.numeric(VCOSS_ACNC_17$staff_volunteers)
+
+Other_Staff_CharSize_17 <- summarise(group_by(filter(VCOSS_ACNC_17,
+                                                     !str_detect(main_activity,
+                                                                regex("social services", ignore_case = TRUE))),
+                                              charity_size),
+                                     staff_part_time = sum(staff_part_time_2017, na.rm = TRUE),
+                                     staff_full_time = sum(staff_full_time_2017, na.rm = TRUE),
+                                     staff_casual = sum(as.numeric(staff_casual_2017), na.rm = TRUE),
+                                     staff_volunteers = sum(as.numeric(staff_volunteers), na.rm = TRUE))
+
+
+Other_Staff_CharSize_17 <- pivot_longer(Other_Staff_CharSize_17,
+                                        cols = c(staff_part_time,
+                                                 staff_full_time,
+                                                 staff_casual,
+                                                 staff_volunteers),
+                                        names_to = "employment_type",
+                                        values_to = "employee_count")
+
+Other_Staff_CharSize_17$Year <- 2017
+
+Other_Staff_CharSize_1617 <- rbind(Other_Staff_CharSize_16, Other_Staff_CharSize_17)
+
+Other_Staff_CharSize_1617 <- mutate(group_by(Other_Staff_CharSize_1617,
+                                             Year, charity_size),
+                                    proportion = (employee_count / sum(employee_count, na.rm = TRUE)))
+
+gg_Other_Staff_CharSize_1617 <- ggplot(Other_Staff_CharSize_1617) +
+  geom_bar(aes(x = employee_count,
+               y = charity_size,
+               fill = str_clean_wrap(employment_type),
+               text = paste(sep = "\n",
+                            str_clean_wrap(employment_type),
+                            paste(comma(employee_count, 1), "employees"),
+                            percent(proportion, 0.1))),
+           stat = "identity") +
+  facet_rep_wrap(~Year) +
+  scale_fill_manual("",
+                    values = FSSIQualPal(4)) +
+  scale_y_discrete("") +
+  scale_x_continuous("Number of Employees",
+                     labels = comma) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(family = FSSIfont))
+
+pl_Other_Staff_CharSize_1617 <- ggplotly(gg_Other_Staff_CharSize_1617,
+                                   tooltip = "text") %>% 
+  layout(yaxis = list(title = list(text = "Charity Size",
+                                   standoff = 10)),
+         font = list(family = FSSIfont,
+                     size = 12))
+
+gg_Other_Staff_CharSize_1617_prop <- ggplot(Other_Staff_CharSize_1617) +
+  geom_bar(aes(x = proportion,
+               y = charity_size,
+               fill = str_clean_wrap(employment_type),
+               text = paste(sep = "\n",
+                            str_clean_wrap(employment_type),
+                            percent(proportion, 0.1),
+                            paste(comma(employee_count, 1), "employees"))),
+           stat = "identity",
+           show.legend = FALSE) +
+  facet_rep_wrap(~Year) +
+  scale_fill_manual("",
+                    values = FSSIQualPal(4)) +
+  scale_y_discrete("") +
+  scale_x_continuous("Number of Employees",
+                     labels = percent) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(family = FSSIfont))
+
+pl_Other_Staff_CharSize_1617_prop <- ggplotly(gg_Other_Staff_CharSize_1617_prop,
+                                        tooltip = "text",
+                                        showlegend = FALSE) %>% 
+  layout(yaxis = list(title = list(text = "Charity Size",
+                                   standoff = 10)),
+         font = list(family = FSSIfont,
+                     size = 12))
+
+subplot(pl_Other_Staff_CharSize_1617, pl_Other_Staff_CharSize_1617_prop,
+        nrows = 2, margin = 0.1) %>% 
+  layout(title = list(text = "All Other Sectors Staff Employment Types per Charity Size",
+                      xref = "canvas",
+                      x = 0.1),
+         legend = list(title = list(text = "Employment Type",
+                                    font = list(size = 12))),
+         yaxis = list(title = list(text = "Charity Size")),
+         yaxis2 = list(title = list(text = "Charity Size")),
+         xaxis = list(title = list(text = "Number of Employees",
+                                    standoff = 5)),
+         xaxis2 = list(title = list(text = "Number of Employees",
+                                    standoff = 5)),
+         xaxis3 = list(title = list(text = "Pecentage of Employees",
+                                    standoff = 5)),
+         xaxis4 = list(title = list(text = "Pecentage of Employees",
+                                    standoff = 5)),
+         font = list(family = FSSIfont,
+                     size = 12))
+
+```
+
+### 2c - Total Staff by Employment Type in Other Sectors
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Other_Staff_MainAct16 <- summarise(group_by(filter(VCOSS_ACNC_16,
+                                                   !str_detect(main_activity_2016,
+                                                               regex("social services", ignore_case = TRUE))),
+                                            main_activity = main_activity_2016),
+                                   full_time = sum(staff_full_time_2016, na.rm = TRUE),
+                                   part_time = sum(staff_part_time_2016, na.rm = TRUE),
+                                   casual = sum(staff_casual_2016, na.rm = TRUE))
+
+Other_Staff_MainAct16_long <- pivot_longer(Other_Staff_MainAct16,
+                                           cols = c(full_time,
+                                                    part_time,
+                                                    casual),
+                                           names_to = "employment_type",
+                                           values_to = "employee_count")
+
+Other_Staff_MainAct16_long$Year <- 2016
+
+
+Other_Staff_MainAct17 <- summarise(group_by(filter(VCOSS_ACNC_17,
+                                                   !str_detect(main_activity,
+                                                               regex("social services", ignore_case = TRUE))),
+                                            main_activity),
+                                   full_time = sum(staff_full_time_2017, na.rm = TRUE),
+                                   part_time = sum(staff_part_time_2017, na.rm = TRUE),
+                                   casual = sum(staff_casual_2017, na.rm = TRUE))
+
+Other_Staff_MainAct17_long <- pivot_longer(Other_Staff_MainAct17,
+                                           cols = c(full_time,
+                                                    part_time,
+                                                    casual),
+                                           names_to = "employment_type",
+                                           values_to = "employee_count")
+
+Other_Staff_MainAct17_long$Year <- 2017
+
+Other_Staff_MainAct_1617 <- rbind(Other_Staff_MainAct16_long, Other_Staff_MainAct17_long)
+
+Other_Staff_MainAct_1617$Year <- as.ordered(Other_Staff_MainAct_1617$Year)
+
+gg_Other_Staff_MainAct_1617 <- ggplot(Other_Staff_MainAct_1617,
+                                      aes(x = Year,
+                                          y = employee_count,
+                                          col = str_clean_wrap(employment_type),
+                                          group = str_clean_wrap(employment_type),
+                                          text = paste(sep = "\n",
+                                                       comma(employee_count),
+                                                       str_clean_wrap(employment_type)))) +
+  geom_point() +
+  stat_summary(fun.y = sum, geom = "line") +
+  scale_x_discrete("Year",
+                   expand = c(0.05, 0.05)) +
+  scale_y_continuous("Number of Staff\n ",
+                     labels = comma,
+                     expand = c(0.15, 0.15),
+                     limits = c(0, NA)) +
+  scale_color_brewer("",
+                     palette = "Dark2") +
+  facet_rep_wrap(~str_clean_wrap(main_activity, n_characters = 38),
+                 repeat.tick.labels = TRUE,
+                 scales = "free_y",
+                 ncol = 3) +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = NA,
+                                        colour = NA),
+        panel.spacing.y = unit(2, "cm"),
+        panel.spacing.x = unit(1, "cm"),
+        axis.ticks.length.x = unit(2, "mm"))
+
+ggplotly(gg_Other_Staff_MainAct_1617,
+         tooltip = "text") %>% 
+  layout(title = list(text = "Changes in Staff Counts by Work Loading in Other Sectors, 2016 to 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         margin = list(t = 80, b = 5,
+                       l = 5, r = 5,
+                       pad = 2),
+         yaxis = list(autorange = FALSE),
+         legend = list(title = list(text = "Employment Type"),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+### 2d - Volunteers and Paid Employees in Other Sectors
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+gg_Other_Volunteers_PaidStaff_1617 <- ggplot(filter(Volunteers_PaidStaff_1617,
+                                                    !str_detect(main_activity,
+                                                                regex("social services",
+                                                                      ignore_case = TRUE)))) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              linetype = 5,
+              col = "grey80",
+              size = 0.25) +
+  geom_point(aes(x = paid_staff,
+                 y = volunteers,
+                 size = fct_rev(charity_size),
+                 fill = str_clean_wrap(main_activity),
+                 frame = Year,
+                 text = paste(sep = "\n",
+                              str_cleaner(main_activity),
+                              paste(charity_size, "charities"),
+                              paste(comma(volunteers), "volunteers"),
+                              paste(comma(paid_staff), "paid staff"),
+                              paste(percent(volunteers / (volunteers + paid_staff), 0.1),
+                                    "volunteer workforce"))),
+             alpha = 0.5,
+             colour = "grey25") +
+  scale_x_continuous("Paid Staff",
+                     labels = comma) +
+  scale_y_continuous("Volunteers",
+                     labels = comma,
+                     breaks = pretty_breaks(5)) +
+  scale_size_discrete("",
+                      guide = "none",
+                      range = c(4, 8)) +
+  scale_fill_manual("",
+                    values = FSSIQualPal(12)) +
+  theme_minimal()
+
+ggplotly(gg_Other_Volunteers_PaidStaff_1617,
+         tooltip = "text") %>% 
+  add_annotations(text = "equal number volunteers to paid staff",
+                  textangle = -33.42,
+                  opacity = 0.5,
+                  showarrow = FALSE,
+                  xref = "x",
+                  x = 20000,
+                  yref = "y",
+                  y = 22500) %>% 
+  layout(legend = list(title = list(text = "Charity size and Main Activity",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         title = list(text = "Volunteers and Paid Staff Working for Other Sectors, 2016 to 2017",
+                      xref = "canvas",
+                      x = 0.1),
+         margin = list(t = 50,
+                       b = 10,
+                       l = 5,
+                       r = 5),
+         font = list(family = FSSIfont,
+                     size = 12))
+         
+```
+
+
+### 2e - Volunteer Percentage of Workforce in Other Sectors
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plot_ly() %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[1]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[1],
+                                "<extra></extra>"),
+          domain = list(row = 0, column = 0),
+          marker = list(colors = c("rgb(150, 77, 234))",
+                                   "rgb(234, 231, 77"),
+                        line = list(color = "#cecece",
+                                    width = 1))) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[2]),
+          labels = ~str_cleaner(staff_type),
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[2],
+                                "<extra></extra>"),
+          values = ~staff_count,
+          frame = ~Year,
+          domain = list(row = 0, column = 1)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[3]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[3],
+                                "<extra></extra>"),
+          domain = list(row = 0, column = 2)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[4]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[4],
+                                "<extra></extra>"),
+          domain = list(row = 1, column = 0)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[5]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[5],
+                                "<extra></extra>"),
+          domain = list(row = 1, column = 1)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[6]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[6],
+                                "<extra></extra>"),
+          domain = list(row = 1, column = 2)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[7]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[7],
+                                "<extra></extra>"),
+          domain = list(row = 2, column = 0)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[8]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[8],
+                                "<extra></extra>"),
+          domain = list(row = 2, column = 1)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[9]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[9],
+                                "<extra></extra>"),
+          domain = list(row = 2, column = 2)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[10]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[10],
+                                "<extra></extra>"),
+          domain = list(row = 3, column = 0)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[11]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[11],
+                                "<extra></extra>"),
+          domain = list(row = 3, column = 1)) %>% 
+  add_pie(data = filter(Volunteers_PaidStaff_1617_long,
+                        main_activity == activity[12]),
+          labels = ~str_cleaner(staff_type),
+          values = ~staff_count,
+          frame = ~Year,
+          hovertemplate = paste(sep = "\n",
+                                "%{value} %{label}",
+                                activity[1],
+                                "<extra></extra>"),
+          domain = list(row = 3, column = 2)) %>% 
+  layout(grid = list(rows = 4, columns = 3),
+         title = list(text = "Volunteer Workforce Percentage for Other Sectors, 2016 to 2017",
+                      standoff = 5,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         legend = list(title = list(text = "Staff employment type",
+                                    font = list(size = 14))),
+         margin = list(t = 40, b = 5,
+                       l = 5, r = 5))
+
+
+```
+
+### 2f - Budget Status in Other Sectors
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+gg_Other_DebtSurplus <- ggplot(Other_DebtSurplus_MainAct_1617_long,
+                               aes(x = Year,
+                                   y = count,
+                                   colour = str_cleaner(budget_status),
+                                   group = budget_status,
+                                   text = paste(sep = "\n",
+                                                paste(comma(count, 1), "charities"),
+                                                str_cleaner(budget_status)))) +
+  geom_point() +
+  geom_line() +
+  facet_rep_wrap(~str_clean_wrap(main_activity, 38),
+                 scales = "free_y",
+                 ncol = 3,
+                 repeat.tick.labels = "x") +
+  scale_x_discrete(expand = c(0.05, 0.05)) +
+  scale_y_continuous("Number of Charities\n ",
+                     labels = comma,
+                     limits = c(0, NA)) +
+  scale_color_manual("",
+                     values = c("#e04c51", GreySingle, "#2495d6")) +
+  theme_minimal() +
+  theme(panel.spacing.y = unit(2, "cm"),
+        panel.spacing.x = unit(1, "cm"),
+        axis.ticks.length.x = unit(2, "mm"))
+
+ggplotly(gg_Other_DebtSurplus,
+         tooltip = "text") %>% 
+  layout(title = list(text = "Count of Other Sector Charities by Budget Status, 2016 - 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         margin = list(t = 80),
+         legend = list(title = list(text = "Budget Status",
+                                    font = list(size = 14)),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"))
+
+```
+
+### 2g - National and International Grants in Other Sectors
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Grants_InOut_MainAct_16 <- summarise(group_by(filter(VCOSS_ACNC_16,
+                                                     !str_detect(main_activity_2016,
+                                                                 regex("social services",
+                                                                       ignore_case = TRUE))),
+                                              main_activity = main_activity_2016),
+                                     for_use_in_australia = sum(grants_and_donations_made_for_use_in_australia_2016,
+                                                                na.rm = TRUE),
+                                     for_use_outside_australia = sum(grants_and_donations_made_for_use_outside_australia_2016,
+                                                                     na.rm = TRUE))
+
+
+Grants_InOut_MainAct_16$Year <- 2016
+
+Grants_InOut_MainAct_17 <- summarise(group_by(filter(VCOSS_ACNC_17,
+                                                     !str_detect(main_activity,
+                                                                 regex("social services",
+                                                                       ignore_case = TRUE))),
+                                              main_activity),
+                                     for_use_in_australia = sum(grants_and_donations_made_for_use_in_australia_2017,
+                                                                na.rm = TRUE),
+                                     for_use_outside_australia = sum(grants_and_donations_made_for_use_outside_australia_2017,
+                                                                     na.rm = TRUE))
+
+
+Grants_InOut_MainAct_17$Year <- 2017
+
+Grants_InOut_MainAct_1617 <- rbind(Grants_InOut_MainAct_16, Grants_InOut_MainAct_17)
+
+Grants_InOut_MainAct_1617$Year <- as.ordered(Grants_InOut_MainAct_1617$Year)
+
+Grants_InOut_MainAct_1617_long <- pivot_longer(Grants_InOut_MainAct_1617,
+                                               cols = c(for_use_in_australia,
+                                                        for_use_outside_australia),
+                                               names_to = "grant_source",
+                                               values_to = "grant_amount")
+
+gg_Grants_InOut_MainAct_1617 <- ggplot(Grants_InOut_MainAct_1617_long,
+                                       aes(x = Year,
+                                           y = grant_amount,
+                                           colour = str_clean_wrap(grant_source),
+                                           group = grant_source,
+                                           text = paste("\n",
+                                                        dollar(grant_amount,
+                                                               1),
+                                                        str_cleaner(grant_source)))) +
+  geom_line() +
+  geom_point() +
+  facet_rep_wrap(~str_clean_wrap(main_activity, 36),
+                 scales = "free_y",
+                 ncol = 3,
+                 repeat.tick.labels = "x") +
+  scale_x_discrete(expand = c(0.05, 0.05)) +
+  scale_y_continuous("Grant Amount\n ",
+                     labels = dollar_format(scale = 0.000001,
+                                            suffix = "m")) +
+  scale_color_manual("",
+                     values = c("gold3", GreySingle)) +
+  theme_minimal() +
+  theme(panel.spacing.y = unit(2, "cm"),
+        panel.spacing.x = unit(1, "cm"),
+        axis.ticks.length.x = unit(2, "mm"),
+        strip.background = element_rect(fill = NA,
+                                        colour = NA))
+
+ggplotly(gg_Grants_InOut_MainAct_1617,
+         tooltip = "text", shareX = FALSE) %>% 
+  layout(title = list(text = "Grant Use for Other Sectors, 2016 to 2017",
+                      standoff = 10,
+                      xref = "canvas",
+                      x = 0.1),
+         font = list(family = FSSIfont,
+                     size = 12),
+         legend = list(y = 0.95, 
+                       title = list(text = "Grant use",
+                                    size = 14),
+                       itemclick = "toggleothers",
+                       itemdoubleclick = "toggle"),
+         margin = list(t = 50,
+                       b = 30,
+                       l = 60))
+
+```
+
