@@ -107,6 +107,46 @@ ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
 
 ##################################################
 ##################################################
+## ---  Recoding Booleans  -------------------- ##
+##################################################
+##################################################
+
+# ACNC data records booleans as y or no
+
+yn_boolfix <- function(dataframe){
+        
+        for(col_name in colnames(dataframe)) {
+                
+                if(sum(c("n", "y") %in% tolower(unique(dataframe[[col_name]]))) == 2) {
+                        
+                        dataframe[[col_name]] <- recode(dataframe[[col_name]],
+                                                        "n" = FALSE, "N" = FALSE,
+                                                        "y" = TRUE, "Y" = TRUE)
+                        
+                        
+                        
+                } else if(sum(c(NA, "y") %in% tolower(unique(dataframe[[col_name]]))) == 2) {
+                        # replace_na needed because recode(dataframe[[col_name]], NA = FALSE) does not work like that
+                        
+                        dataframe[[col_name]] <- recode(dataframe[[col_name]],
+                                                        "y" = TRUE, "Y" = TRUE)
+                        
+                        dataframe[[col_name]] <- replace_na(dataframe[[col_name]],
+                                                            FALSE)
+                        
+                }
+        }
+        
+        return(dataframe)
+        
+}
+
+ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+                               yn_boolfix)
+
+
+##################################################
+##################################################
 ## ---  Removing Invalid ABNs  ---------------- ##
 ##################################################
 ##################################################
@@ -184,9 +224,64 @@ mainactivity_check <- sapply(ACNC_Datasets_13to18,
                              main_act_present)
 
 if(FALSE %in% mainactivity_check) {
+        
         stop(paste("Main activity is missing from",
                    paste(names(mainactivity_check[which(mainactivity_check == FALSE)]),
                          collapse = ", ")))
+        
 }
 
+main_activity_cleaner <- function(dataframe) {
+        
+        dataframe[["main_activity"]] <- str_remove_all(dataframe[["main_activity"]],
+                                                                  "and")
+        
+        dataframe[["main_activity"]] <- str_replace_all(dataframe[["main_activity"]],
+                                                       "\\,|\\.",
+                                                       " ")
+        
+        dataframe[["main_activity"]] <- str_squish(dataframe[["main_activity"]])
+        
+        return(dataframe)
+        
+}
+
+ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+                               main_activity_cleaner)
+
+SocServ_activities <- c("aged care",
+                        "civic advocacy",
+                        "economic social community",
+                        "emergency relief",
+                        "employment training", "training",
+                        "housing activities",
+                        "income support maintenance", "income maintenance",
+                        "international activities",
+                        "law legal services", "law services", "legal services",
+                        "mental health crisis intervention", "mental health", "crisis intervention",
+                        "other education",
+                        "other health service delivery", "health service delivery",
+                        "social service", "social services")
+
+Community_sector_varcreator <- function(dataframe) {
+        
+        dataframe <- mutate(dataframe,
+                            Community_sector = if_else(str_detect(main_activity,
+                                                                  regex(paste0(SocServ_activities,
+                                                                         collapse = "|"),
+                                                                        ignore_case = TRUE)),
+                                                       true = TRUE, false = FALSE),
+                            Vic_Community_sector = if_else(Community_sector == TRUE &
+                                                             operates_in_vic == TRUE &
+                                                             str_detect(state,
+                                                                        regex("vic|victoria",
+                                                                              ignore_case = TRUE)),
+                                                           true = TRUE, false = FALSE))
+        
+        return(dataframe)
+        
+}
+
+ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+                               Community_sector_varcreator)
 
