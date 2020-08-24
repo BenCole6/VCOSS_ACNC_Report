@@ -216,7 +216,7 @@ ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
 main_act_present <- function(dataframe) {
         
         regex("main_activity", ignore_case = TRUE) %in%
-                make_clean_names(colnames(dataframe))
+                make_clean_names(colnames(dataframe)) # complement of clean_names but for a vector
         
 }
 
@@ -263,19 +263,40 @@ SocServ_activities <- c("aged care",
                         "other health service delivery", "health service delivery",
                         "social service", "social services")
 
+Community_sector_colnames <- make_clean_names(SocServ_activities) 
+
+Community_sector_other_varcreator <- function(dataset) {
+        
+        temp_df <- select(dataset, any_of(Community_sector_colnames))
+        
+        matching_cols <- colnames(temp_df)[which(colnames(temp_df) %in% Community_sector_colnames)]
+        
+        temp_df <- mutate(rowwise(dataset),
+                          community_sector_other = if_else(sum(c_across(matching_cols),
+                                                               na.rm = TRUE)>0,
+                                                           true = TRUE, false = FALSE))
+        
+        return(temp_df)
+        
+}
+
+ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+                               Community_sector_other_varcreator)
+
 Community_sector_varcreator <- function(dataframe) {
         
         dataframe <- mutate(dataframe,
-                            Community_sector = if_else(str_detect(main_activity,
-                                                                  regex(paste0(SocServ_activities,
-                                                                         collapse = "|"),
-                                                                        ignore_case = TRUE)),
-                                                       true = TRUE, false = FALSE),
-                            Vic_Community_sector = if_else(Community_sector == TRUE &
-                                                             operates_in_vic == TRUE &
+                            community_sector_main = if_else(str_detect(main_activity,
+                                                                       regex(paste0(SocServ_activities,
+                                                                                    collapse = "|"),
+                                                                             ignore_case = TRUE)),
+                                                            true = TRUE, false = FALSE),
+                            vic_community_sector = if_else((community_sector_main == TRUE |
+                                                             community_sector_other == TRUE) &
+                                                             (operates_in_vic == TRUE &
                                                              str_detect(state,
                                                                         regex("vic|victoria",
-                                                                              ignore_case = TRUE)),
+                                                                              ignore_case = TRUE))),
                                                            true = TRUE, false = FALSE))
         
         return(dataframe)
@@ -284,4 +305,8 @@ Community_sector_varcreator <- function(dataframe) {
 
 ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
                                Community_sector_varcreator)
+
+Vic_ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+                                   function(x) {filter(x, vic_community_sector == TRUE)})
+
 
