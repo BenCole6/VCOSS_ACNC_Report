@@ -101,8 +101,10 @@ common_col_selector <- function(data) {
         return(selected_data)
 }
 
-ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
-                               common_col_selector)
+
+## Commented out because it seems like a bad idea in retrospect
+# ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+#                                common_col_selector)
 
 
 ##################################################
@@ -308,5 +310,76 @@ ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
 
 Vic_ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
                                    function(x) {filter(x, vic_community_sector == TRUE)})
+
+
+
+##################################################
+##################################################
+## ---  Organisation Size  -------------------- ##
+##################################################
+##################################################
+
+## The below commented code was used to uncover that the 2013 dataset varies substantially from datasets in the other years
+# lapply(ACNC_Datasets_13to18,
+#        function(x) {colnames(x)[which(str_detect(colnames(x),
+#                                                  regex("gross_income", ignore_case = TRUE)))]})
+# 
+# stop("All code above here was run")
+
+ACNC_Datasets_14to18 <- ACNC_Datasets_13to18[which(!str_detect(names(ACNC_Datasets_13to18), "13"))]
+
+rm(ACNC_Datasets_13to18)
+
+## cleaning the encoding for charity size
+
+Charitysize_cleaner <- function(data){
+        
+        data <- mutate(data,
+                       cleaned_charitysize = toupper(substring(charity_size,
+                                                               1, 1)))
+        
+        return(data)
+        
+}
+
+ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
+                               Charitysize_cleaner)
+
+Correct_selfreport_size <- function(data) {
+        
+        grossIncome_col <- colnames(data)[which(str_detect(colnames(data),
+                                                           make_clean_names("total gross income")))]
+        
+        reportedSize_col <- colnames(data)[which(str_detect(colnames(data),
+                                                            make_clean_names("cleaned_charitysize")))]
+        
+        data <- mutate(data,
+                       correct_charitysize = case_when(get(grossIncome_col) <= 250000 &
+                                                               get(reportedSize_col) == "S" ~ TRUE,
+                                                       get(grossIncome_col) > 250000 & get(grossIncome_col) <= 1000000 &
+                                                               get(reportedSize_col) == "M" ~ TRUE,
+                                                       get(grossIncome_col) > 1000000 &
+                                                               get(reportedSize_col) == "L" ~ TRUE),
+                       VCOSS_charitysize = case_when(get(grossIncome_col) < 50000 ~ "Extra Small",
+                                                     get(grossIncome_col) >= 50000 & get(grossIncome_col) < 250000 ~ "Small",
+                                                     get(grossIncome_col) >= 250000 & get(grossIncome_col) < 1000000 ~ "Medium",
+                                                     get(grossIncome_col) >= 1000000 & get(grossIncome_col) < 10000000 ~ "Large",
+                                                     get(grossIncome_col) >= 10000000 & get(grossIncome_col) < 100000000 ~ "Extra Large",
+                                                     get(grossIncome_col) >= 100000000 ~ "Extra Extra Large"))
+        
+        data[["correct_charitysize"]] <- replace_na(data[["correct_charitysize"]],
+                                                    FALSE)
+        
+        return(data)
+        
+}
+
+ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
+                               Correct_selfreport_size)
+
+
+ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
+                               Correct_selfreport_size)
+
 
 
