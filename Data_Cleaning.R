@@ -274,7 +274,7 @@ Community_sector_other_varcreator <- function(dataset) {
         matching_cols <- colnames(temp_df)[which(colnames(temp_df) %in% Community_sector_colnames)]
         
         temp_df <- mutate(rowwise(dataset),
-                          community_sector_other = if_else(sum(c_across(matching_cols),
+                          community_sector_other = if_else(sum(c_across(any_of(matching_cols)),
                                                                na.rm = TRUE)>0,
                                                            true = TRUE, false = FALSE))
         
@@ -310,7 +310,6 @@ ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
 
 Vic_ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
                                    function(x) {filter(x, vic_community_sector == TRUE)})
-
 
 
 ##################################################
@@ -379,7 +378,142 @@ ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
 
 
 ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
-                               Correct_selfreport_size)
+                               function(data) {
+                                       filter(data,
+                                              correct_charitysize == TRUE)
+                               })
+
+##################################################
+##################################################
+## ---  Income  ------------------------------- ##
+##################################################
+##################################################
+
+## Removing charities with no income
+
+ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
+                               function(data) {
+                                       filter(data,
+                                              total_gross_income != 0)
+                               })
 
 
+## Removing charities with inaccurate income reporting
+#  first bringing in previously-prepared VCOSS ACNC data to select columns
+
+VCOSS_ACNC_2016_columns <- colnames(clean_names(read_excel("Datasets/VCOSS - 2016 ACNC Data.xlsx")))
+
+VCOSS_ACNC_2016_columns <- str_remove_all(VCOSS_ACNC_2016_columns, "_2016")
+
+VCOSS_ACNC_2016_columns <- c(VCOSS_ACNC_2016_columns,
+                             "Year",
+                             "Valid_ABN",
+                             "community_sector_other",
+                             "community_sector_main",
+                             "vic_community_sector",
+                             "cleaned_charitysize",
+                             "correct_charitysize",
+                             "VCOSS_charitysize") ## hard coded from created variables in code **above** only
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
+                                     function(data){
+                                             select(data,
+                                                    any_of(VCOSS_ACNC_2016_columns),
+                                                    contains("government_grants"),
+                                                    government_grants = contains("revenue_from_government"))
+                                     })
+
+VCOSSACNC_missingcols <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                function(data) {
+                                        missing_cols <- VCOSS_ACNC_2016_columns[which(!(VCOSS_ACNC_2016_columns %in% colnames(data)))]
+                                        
+                                        return(missing_cols)
+                                })
+
+if(sum(sapply(VCOSSACNC_missingcols, length) >0) >0) {
+        stop(paste("There are missing columns in the VCOSS-filtered ACNC Data.",
+                   "Ctrl+F error code: `VCOSS_MISSINGCOLS_423` in Data_Cleaning.R script.",
+                   sep = "\n"))
+}
+
+## Removing charities with inaccurate income data
+
+Income_cols <- c("government_grants",
+                 "donations_and_bequests",
+                 "all_other_revenue",
+                 "other_income") ## hard coded from VCOSS_ACNC_2016_columns
+
+Inaccurate_income <- function(data) {
+        
+        data <- mutate(data,
+                       reported_income = sum(c_across(all_of(Income_cols))),
+                       income_variance = abs(reported_income - total_gross_income),
+                       inaccurate_income_reported = case_when(cleaned_charitysize == "S" &
+                                                                      income_variance > 25000 ~ "inaccurate",
+                                                              cleaned_charitysize == "M" &
+                                                                      income_variance > 100000 ~ "inaccurate",
+                                                              cleaned_charitysize == "L" &
+                                                                      income_variance > 1000000 ~ "inaccurate"))
+        
+        data$inaccurate_income_reported <- replace_na(data$inaccurate_income_reported,
+                                                      "accurate")
+        
+        return(data)
+}
+
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     Inaccurate_income)
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data) {
+                                             filter(data,
+                                                    inaccurate_income_reported == "accurate")
+                                     })
+
+
+
+##################################################
+##################################################
+## ---  Expenditure  -------------------------- ##
+##################################################
+##################################################
+
+expenses_cols <- c("employee_expenses",
+                   "interest_expenses",
+                   "all_other_expenses")
+
+Inaccurate_expenses <- function(data) {
+        
+        data <- mutate(data,
+                       reported_expenses = sum(c_across(all_of(expenses_cols))),
+                       expenses_variance = abs(reported_expenses - total_expenses),
+                       inaccurate_expenses_reported = case_when(cleaned_charitysize == "S" &
+                                                                        expenses_variance > 25000 ~ "inaccurate",
+                                                                cleaned_charitysize == "M" &
+                                                                        expenses_variance > 100000 ~ "inaccurate",
+                                                                cleaned_charitysize == "L" &
+                                                                        expenses_variance > 1000000 ~ "inaccurate"))
+        
+        data$inaccurate_expenses_reported <- replace_na(data$inaccurate_expenses_reported,
+                                                        "accurate")
+        
+        return(data)
+        
+}
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     Inaccurate_expenses)
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data) {
+                                             filter(data,
+                                                    inaccurate_expenses_reported == "accurate")
+                                     })
+
+##################################################
+##################################################
+## ---  Ratios  ------------------------------- ##
+##################################################
+##################################################
 
