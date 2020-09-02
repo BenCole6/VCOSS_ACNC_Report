@@ -481,7 +481,7 @@ VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
 
 expenses_cols <- c("employee_expenses",
                    "interest_expenses",
-                   "all_other_expenses")
+                   "all_other_expenses") ## hardcoded for same reasons as above
 
 Inaccurate_expenses <- function(data) {
         
@@ -511,9 +511,121 @@ VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
                                                     inaccurate_expenses_reported == "accurate")
                                      })
 
+## Coercing employee columns to numeric
+
+employee_cols <- c("staff_full_time",
+                   "staff_part_time",
+                   "staff_casual",
+                   "staff_volunteers")
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+       function(data) {
+               
+               data <- mutate(data,
+                              across(all_of(employee_cols),
+                                     as.numeric))
+               
+       })
+
+Employee_expenses <- function(data) {
+        
+        data <- mutate(data,
+                       total_employees = sum(c_across(employee_cols), na.rm = TRUE),
+                       employeeexpenses_per_employee = (employee_expenses / total_employees),
+                       excessive_expenses = if_else(total_employees > 0 & 
+                                                            employeeexpenses_per_employee > 300000,
+                                                    true = "excessive", false = "not excessive"))
+        
+        return(data)
+        
+}
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     Employee_expenses)
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data) {
+                                             
+                                             filter(data,
+                                                    excessive_expenses == "not excessive")
+                                     })
+
 ##################################################
 ##################################################
 ## ---  Ratios  ------------------------------- ##
 ##################################################
 ##################################################
+
+## Negative values for fields that should have non-negative values
+
+nonnegative_cols <- c("staff_full_time",
+                      "staff_part_time",
+                      "staff_casual",
+                      "staff_volunteers",
+                      "government_grants",
+                      "donations_and_bequests",
+                      "all_other_revenue",
+                      "other_income",
+                      "employee_expenses",
+                      "interest_expenses",
+                      "grants_and_donations_made_for_use_in_australia",
+                      "grants_and_donations_made_for_use_outside_australia",
+                      "all_other_expenses")
+
+## coercing nonnegative_cols into numeric
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data) {
+                                             mutate(data,
+                                                    across(nonnegative_cols,
+                                                           as.numeric))
+                                     })
+
+Negative_values_checker <- function(data) {
+        
+        data <- mutate(data,
+                       invalid_negative_values = sum(c_across(all_of(nonnegative_cols)) < 0,
+                                                     na.rm = TRUE))
+        
+}
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     Negative_values_checker)
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data) {
+                                             filter(data,
+                                                    invalid_negative_values == 0)
+                                     })
+
+## Imbalanced reporting, eg govt grants > total income
+
+Imbalanced_income <- function(data) {
+        
+        data <- mutate(data,
+                       total_grants_type = sum(c_across(c(government_grants, donations_and_bequests)),
+                                               na.rm = TRUE),
+                       total_grants_use = sum(c_across(c(grants_and_donations_made_for_use_outside_australia,
+                                                         grants_and_donations_made_for_use_in_australia)),
+                                              na.rm = TRUE),
+                       grants_income_prop = total_grants_type / total_gross_income,
+                       grants_use_prop = total_grants_use / total_gross_income,
+                       imbalanced_grants = case_when(grants_income_prop > 1.05 ~ "imbalanced",
+                                                     grants_use_prop > 1.05 ~ "imbalanced"))
+        
+        data$imbalanced_grants <- replace_na(data$imbalanced_grants,
+                                             "balanced")
+        
+        return(data)
+        
+}
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     Imbalanced_income)
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data) {
+                                             filter(data,
+                                                    imbalanced_grants == "balanced")
+                                     })
 
