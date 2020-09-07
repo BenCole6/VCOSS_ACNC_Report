@@ -31,6 +31,7 @@ ACNC_Datasets_13to18 <- sapply(X = ACNC_Yearly_Datasets,
 ##################################################
 ##################################################
 
+## dataframe names pulled from names of files
 names(ACNC_Datasets_13to18) <- sapply(names(ACNC_Datasets_13to18),
                                       function(year){str_remove_all(year, ".xlsx")})
 
@@ -92,17 +93,18 @@ for(col_index in 1:ncol(colnames_df)) {
         
 }
 
-# function for below lapply
-common_col_selector <- function(data) {
-        
-        selected_data <- select(data,
-                                any_of(common_cols))
-        
-        return(selected_data)
-}
-
-
-## Commented out because it seems like a bad idea in retrospect
+# # Commented out because it seems like a bad idea in retrospect
+# # function for below lapply
+# common_col_selector <- function(data) {
+# 
+#         selected_data <- select(data,
+#                                 any_of(common_cols))
+# 
+#         return(selected_data)
+# }
+# 
+# 
+# 
 # ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
 #                                common_col_selector)
 
@@ -208,6 +210,12 @@ ABN_Validator <- function(dataframe, abn_colname = "abn") {
 ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
                                ABN_Validator)
 
+ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+                               function(data) {
+                                       filter(data,
+                                              Valid_ABN == "Valid ABN")
+                               })
+
 ##################################################
 ##################################################
 ## ---  Filtering on Main Activity  ----------- ##
@@ -218,7 +226,7 @@ ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
 main_act_present <- function(dataframe) {
         
         regex("main_activity", ignore_case = TRUE) %in%
-                make_clean_names(colnames(dataframe)) # complement of clean_names but for a vector
+                make_clean_names(colnames(dataframe)) # complement of `clean_names` but for creating a vector
         
 }
 
@@ -385,6 +393,19 @@ ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
 
 ##################################################
 ##################################################
+## ---  Registration Status  ------------------ ##
+##################################################
+##################################################
+
+ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
+                               function(data) {
+                                       filter(data,
+                                              !str_detect(registration_status,
+                                                          regex("revoke", ignore_case = TRUE)))})
+
+
+##################################################
+##################################################
 ## ---  Income  ------------------------------- ##
 ##################################################
 ##################################################
@@ -430,7 +451,7 @@ VCOSSACNC_missingcols <- lapply(VCOSS_ACNC_Datasets_14to18,
                                         return(missing_cols)
                                 })
 
-if(sum(sapply(VCOSSACNC_missingcols, length) >0) >0) {
+if(sum(sapply(VCOSSACNC_missingcols, length) > 0) > 0) {
         stop(paste("There are missing columns in the VCOSS-filtered ACNC Data.",
                    "Ctrl+F error code: `VCOSS_MISSINGCOLS_423` in Data_Cleaning.R script.",
                    sep = "\n"))
@@ -527,14 +548,23 @@ VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
                
        })
 
+## Checking employee expenses per employee aren't excessive or inaccurate
+
 Employee_expenses <- function(data) {
         
         data <- mutate(data,
                        total_employees = sum(c_across(employee_cols), na.rm = TRUE),
-                       employeeexpenses_per_employee = (employee_expenses / total_employees),
-                       excessive_expenses = if_else(total_employees > 0 & 
-                                                            employeeexpenses_per_employee > 300000,
-                                                    true = "excessive", false = "not excessive"))
+                       employeeexpenses_per_employee = case_when(total_employees == 0 & 
+                                                                         employee_expenses == 0 ~ 0,
+                                                                 total_employees != 0 ~ employee_expenses / total_employees),
+                       excessive_expenses = case_when(!(is.finite(employeeexpenses_per_employee)) ~ "inaccurate reporting",
+                                                      total_employees < 0 &
+                                                              employeeexpenses_per_employee > 0 ~ "inaccurate reporting",
+                                                      total_employees >= 0 &
+                                                              employeeexpenses_per_employee > 300000 ~ "excessive"))
+        
+        data$excessive_expenses <- replace_na(data$excessive_expenses,
+                                              "not excessive")
         
         return(data)
         
@@ -629,3 +659,78 @@ VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
                                                     imbalanced_grants == "balanced")
                                      })
 
+## Finally, filtering to Victorian charities
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data) {
+                                             
+                                             filter(data,
+                                                    str_detect(state,
+                                                               regex("vic|victoria|v", ignore_case = TRUE)))
+                                             
+                                     })
+
+## Coercing ABN to character
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data) {
+                                             data <- mutate(data,
+                                                            abn = as.character(abn))
+                                     })
+
+
+##################################################
+##################################################
+## ---  Removing Religious Charities  --------- ##
+##################################################
+##################################################
+
+VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
+                                     function(data){
+                                             filter(data,
+                                                    !str_detect(main_activity,
+                                                                regex("relig", ignore_case = TRUE)))
+                                     })
+
+##################################################
+##################################################
+## ---  Cleaning Verification  ---------------- ##
+##################################################
+##################################################
+
+## Data previously prepared and provided by VCOSS
+
+VCOSS_cleaned_data <- clean_names(read_excel("Datasets/VCOSS - 2016 ACNC Data.xlsx"))
+
+VCOSS_cleaned_data$abn <- as.character(VCOSS_cleaned_data$abn)
+
+
+# # For cross-checking
+# 
+# filter(VCOSS_ACNC_Datasets_14to18$datadotgov_ais16,
+#        !(abn %in% VCOSS_cleaned_data$abn)) %>% 
+#         View("extras in processed data")
+# 
+# filter(VCOSS_cleaned_data,
+#        !(abn %in% VCOSS_ACNC_Datasets_14to18$datadotgov_ais16$abn)) %>% 
+#         View("missing from processed data")
+
+VCOSS_ACNC_Datasets_Combined <- data.frame()
+
+for(data in 1:length(objects(VCOSS_ACNC_Datasets_14to18))) {
+        
+        file_name <- objects(VCOSS_ACNC_Datasets_14to18)[data]
+        
+        write_csv(x = as.data.frame(VCOSS_ACNC_Datasets_14to18[[data]]),
+                  path = file.path("Cleaned_Data",
+                                   paste0(file_name, ".csv")),
+                  append = FALSE)
+        
+        VCOSS_ACNC_Datasets_Combined <- rbind(VCOSS_ACNC_Datasets_Combined,
+                                              as.data.frame(VCOSS_ACNC_Datasets_14to18[[data]]))
+}
+
+write_csv(VCOSS_ACNC_Datasets_Combined,
+          path = file.path("Cleaned_Data",
+                           "vcoss_acncdata_combined.csv"),
+          append = FALSE)
