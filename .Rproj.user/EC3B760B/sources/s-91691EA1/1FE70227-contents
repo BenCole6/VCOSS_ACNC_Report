@@ -1,0 +1,19 @@
+if(!("VCOSS_ACNC_Datasets_Combined" %in% ls())) {
+  source("Data_Cleaning.R")
+}
+
+library(pacman)
+
+p_load(ggplot2,
+       tidyverse)
+
+## Data Overview
+
+## Types of Organisations
+
+Orgs_by_MainAct_Year <- arrange(summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                           main_activity, Year),
+                                  "No. of Orgs" = n()),
+                                main_activity, Year)
+
+

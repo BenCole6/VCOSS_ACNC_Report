@@ -1,0 +1,60 @@
+library(pacman)
+p_load(stringdist,
+       tidyverse)
+
+VCOSS_cleaned_data <- clean_names(read_excel("Datasets/VCOSS - 2016 ACNC Data.xlsx"))
+
+VCOSS_activties <- unique(VCOSS_cleaned_data$main_activity_2016)
+
+ACNC_activities <- unique(ACNC_Datasets_14to18$datadotgov_ais16$main_activity)
+
+stringdist(VCOSS_activties, ACNC_activities)
+
+VCOSS_activties[1]; ACNC_activities[1]
+
+VCOSS_activties[5]; ACNC_activities[5]
+
+VCOSS_activties[7]; ACNC_activities[6]
+
+VCOSS_activties[19]; ACNC_activities[9]
+
+stringdistmatrix(ACNC_activities)
+
+ACNC_activities[14]; ACNC_activities[4]
+
+ACNC_charities <- sort(unique(ACNC_Datasets_14to18$datadotgov_ais16$charity_name))
+
+ACNC_charities <- str_trim(str_remove_all(ACNC_charities,
+                                          regex(pattern = paste0("\\b",
+                                                                 c("pty", "proprietary",
+                                                                   "ltd", "limited",
+                                                                   "inc", "incorporated",
+                                                                   "the"),
+                                                                 "\\b",
+                                                                 collapse = "|"),
+                                                ignore_case = TRUE)))
+
+CharityName_DistMat <- as.matrix(stringdistmatrix(ACNC_charities,
+                                                  method = "lcs"))
+
+CharityName_matches <- which(CharityName_DistMat <= 0,
+                             arr.ind = TRUE)
+
+CharityName_matches <- mutate(as.data.frame(CharityName_matches),
+                              identity = if_else(row == col,
+                                                 true = TRUE, false = FALSE))
+
+CharityName_matches <- filter(CharityName_matches,
+                              identity == FALSE)
+
+CharityName_matches
+
+stop()
+
+ACNC_charities[4268]; ACNC_charities[4046]
+
+CharityName_DistMat[1120, 1062]
+
+filter(ACNC_Datasets_14to18,
+       str_detect(charity_name, regex("Australian Breastfeeding", ignore_case = TRUE))) %>% View("ABF")
+
