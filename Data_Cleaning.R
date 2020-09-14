@@ -370,6 +370,18 @@ CommunitySector_activities <- c("aged care",
 # ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
 #                                Community_sector_other_varcreator)
 
+## Recoding Advocacy and Civic Activities to Civic Advocacy for consistency
+
+ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
+                                     function(data){
+                                             
+                                             data[["main_activity"]] <- recode(data[["main_activity"]],
+                                                                               "Advocacy civic activities" = "Civic advocacy activities",
+                                                                               "Advocacy and civic activities" = "Civic advocacy activities")
+                                             
+                                             return(data)
+                                     })
+
 Community_sector_varcreator <- function(dataframe) {
         
         dataframe <- mutate(dataframe,
@@ -451,6 +463,8 @@ Correct_selfreport_size <- function(data) {
         reportedSize_col <- colnames(data)[which(str_detect(colnames(data),
                                                             make_clean_names("cleaned_charitysize")))]
         
+        
+        
         data <- mutate(data,
                        correct_charitysize = case_when(get(grossIncome_col) <= 250000 &
                                                                get(reportedSize_col) == "S" ~ TRUE,
@@ -472,15 +486,45 @@ Correct_selfreport_size <- function(data) {
         
 }
 
-ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
-                               Correct_selfreport_size)
+## Charities could report differing charity sizes in 2017 and 2018
+## See section 34 in the explanatory notes for 2017 and 33 for 2018
 
+for(year in 1:length(ACNC_Datasets_14to18)) {
+        
+        if(!str_detect(names(ACNC_Datasets_14to18[year]),
+                       "17|18")) {
+                
+                ACNC_Datasets_14to18[[year]] <- Correct_selfreport_size(ACNC_Datasets_14to18[[year]])
+                
+                ACNC_Datasets_14to18[[year]] <- mutate(ACNC_Datasets_14to18[[year]],
+                                                       main_beneficiaries = NA,
+                                                       revenue_from_goods_and_services = NA)
+                
+        } else {
+                
+                ACNC_Datasets_14to18[[year]] <- mutate(ACNC_Datasets_14to18[[year]],
+                                                       correct_charitysize = TRUE,
+                                                       VCOSS_charitysize = case_when(total_gross_income < 50000 ~ "Extra Small",
+                                                                                     total_gross_income >= 50000 & total_gross_income < 250000 ~ "Small",
+                                                                                     total_gross_income >= 250000 & total_gross_income < 1000000 ~ "Medium",
+                                                                                     total_gross_income >= 1000000 & total_gross_income < 10000000 ~ "Large",
+                                                                                     total_gross_income >= 10000000 & total_gross_income < 100000000 ~ "Extra Large",
+                                                                                     total_gross_income >= 100000000 ~ "Extra Extra Large"))
+                
+        }
+        
+}
+
+# ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
+#                                Correct_selfreport_size)
 
 ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
                                function(data) {
                                        filter(data,
                                               correct_charitysize == TRUE)
                                })
+
+
 
 ##################################################
 ##################################################
@@ -525,14 +569,28 @@ VCOSS_ACNC_2016_columns <- c(VCOSS_ACNC_2016_columns,
                              "vic_community_sector",
                              "cleaned_charitysize",
                              "correct_charitysize",
-                             "VCOSS_charitysize") ## hard coded from created variables in code **above** only
+                             "VCOSS_charitysize", ## hard coded from created variables in code **above** only
+                             "revenue_from_goods_and_services", # added in 2017 and 2018
+                             "revenue_from_investments") # added in 2017 and 2018
+
+for(year in 1:length(ACNC_Datasets_14to18)) {
+        
+        if(!str_detect(names(ACNC_Datasets_14to18[year]), "17|18")){
+                
+                ACNC_Datasets_14to18[[year]][["revenue_from_goods_and_services"]] <- NA
+                ACNC_Datasets_14to18[[year]][["revenue_from_investments"]] <- NA
+                
+        }
+        
+}
 
 VCOSS_ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
                                      function(data){
                                              select(data,
                                                     any_of(VCOSS_ACNC_2016_columns),
                                                     contains("government_grants"),
-                                                    government_grants = contains("revenue_from_government"))
+                                                    government_grants = contains("revenue_from_government"),
+                                                    contains("beneficiaries"))
                                      })
 
 VCOSSACNC_missingcols <- lapply(VCOSS_ACNC_Datasets_14to18,
@@ -544,7 +602,8 @@ VCOSSACNC_missingcols <- lapply(VCOSS_ACNC_Datasets_14to18,
 
 if(sum(sapply(VCOSSACNC_missingcols, length) > 0) > 0) {
         stop(paste("There are missing columns in the VCOSS-filtered ACNC Data.",
-                   "Ctrl+F error code: `VCOSS_MISSINGCOLS_423` in Data_Cleaning.R script.",
+                   "the missing columns are: ",
+                   paste(VCOSSACNC_missingcols, collapse = " "),
                    sep = "\n"))
 }
 
@@ -553,12 +612,14 @@ if(sum(sapply(VCOSSACNC_missingcols, length) > 0) > 0) {
 Income_cols <- c("government_grants",
                  "donations_and_bequests",
                  "all_other_revenue",
+                 "revenue_from_goods_and_services",
+                 "revenue_from_investments", ## added in 2017 and 2018
                  "other_income") ## hard coded from VCOSS_ACNC_2016_columns
 
 Inaccurate_income <- function(data) {
         
         data <- mutate(rowwise(data),
-                       reported_income = sum(c_across(all_of(Income_cols))),
+                       reported_income = sum(c_across(all_of(Income_cols)), na.rm = TRUE),
                        income_variance = abs(reported_income - total_gross_income),
                        inaccurate_income_reported = case_when(cleaned_charitysize == "S" &
                                                                       income_variance > 25000 ~ "inaccurate",
@@ -572,7 +633,6 @@ Inaccurate_income <- function(data) {
         
         return(data)
 }
-
 
 VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
                                      Inaccurate_income)
@@ -600,7 +660,7 @@ expenses_cols <- c("employee_expenses",
 Inaccurate_expenses <- function(data) {
         
         data <- mutate(rowwise(data),
-                       reported_expenses = sum(c_across(all_of(expenses_cols))),
+                       reported_expenses = sum(c_across(all_of(expenses_cols)), na.rm = TRUE),
                        expenses_variance = abs(reported_expenses - total_expenses),
                        inaccurate_expenses_reported = case_when(cleaned_charitysize == "S" &
                                                                         expenses_variance > 25000 ~ "inaccurate",
@@ -726,7 +786,7 @@ VCOSS_ACNC_Datasets_14to18 <- lapply(VCOSS_ACNC_Datasets_14to18,
 Imbalanced_income <- function(data) {
         
         data <- mutate(data,
-                       total_grants_type = sum(c_across(c(government_grants)),
+                       total_grants_type = sum(government_grants,
                                                na.rm = TRUE),
                        grants_income_prop = total_grants_type / total_gross_income,
                        imbalanced_grants = if_else(grants_income_prop > 1.05,
@@ -815,6 +875,10 @@ for(data in 1:length(objects(VCOSS_ACNC_Datasets_14to18))) {
         VCOSS_ACNC_Datasets_Combined <- rbind(VCOSS_ACNC_Datasets_Combined,
                                               as.data.frame(VCOSS_ACNC_Datasets_14to18[[data]]))
 }
+
+colnames(VCOSS_ACNC_Datasets_14to18$datadotgov_ais17)[which(!(colnames(VCOSS_ACNC_Datasets_14to18$datadotgov_ais17) %in% colnames(VCOSS_ACNC_Datasets_14to18$datadotgov_ais16)))]
+
+
 
 write_csv(VCOSS_ACNC_Datasets_Combined,
           path = file.path("Cleaned_Data",

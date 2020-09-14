@@ -1,0 +1,32 @@
+{
+    "id": "8DBB4275",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1600049674895.0,
+    "source_on_save": false,
+    "relative_order": 5,
+    "properties": {
+        "expression": "VCOSS_ACNC_Datasets_Combined",
+        "caption": "VCOSS_ACNC_Datasets_Combined",
+        "totalObservations": 14574,
+        "displayedObservations": 14574,
+        "variables": 44,
+        "cacheKey": "63872C0F",
+        "object": "VCOSS_ACNC_Datasets_Combined",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=VCOSS_ACNC_Datasets_Combined&cache_key=63872C0F&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1467027741496,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1600049674895,
+    "read_only": false,
+    "read_only_alternatives": []
+}
