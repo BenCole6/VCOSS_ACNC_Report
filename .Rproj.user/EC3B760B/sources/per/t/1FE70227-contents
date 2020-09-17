@@ -8,7 +8,8 @@ p_load(ggplot2,
        tidyverse,
        scales,
        lemon,
-       gganimate)
+       gganimate,
+       gridExtra)
 
 VCOSS_colours <- c("#ea5d0a", "#4b55a1", "#f6a400", "black", "grey50")
 
@@ -86,7 +87,7 @@ beneficiaries_mainact_year <- filter(beneficiaries_mainact_year,
                                      !is.na(main_beneficiaries))
 
 gg_beneficiaries_mainact_year <- ggplot(beneficiaries_mainact_year,
-                                        aes(x = `Number of Charities`, fill = Year,
+                                        aes(x = `Number of Charities`, fill = fct_rev(Year),
                                             y = fct_rev(str_wrap(main_beneficiaries, 30)))) +
   geom_bar(stat = "identity",
            position = "dodge") +
@@ -94,7 +95,9 @@ gg_beneficiaries_mainact_year <- ggplot(beneficiaries_mainact_year,
                      labels = comma,
                      expand = c(0.005, 0.05)) +
   scale_y_discrete("Main Activity") +
-  scale_fill_manual(values = VCOSS_colours) +
+  scale_fill_manual(values = VCOSS_colours,
+                    "Year",
+                    guide = guide_legend(reverse = TRUE)) +
   ggtitle("Beneficiaries of Victorian community services industry 2017 - 2018",
           subtitle = "Number of charities servicing beneficiaries as reported in the AIS") +
   theme_minimal() +
@@ -269,8 +272,8 @@ ggplot(VCOSS_ACNC_Datasets_Combined,
   geom_text(stat = "count",
             aes(label = ..count..,
                 y = ..count..),
-            colour = "white", position = "stack",
-            vjust = 1.25, check_overlap = TRUE) +
+            colour = "white", position = position_stack(vjust = 0.5),
+            check_overlap = TRUE) +
   scale_fill_manual(values = c("cyan", VCOSS_colours),
                     "Charity Size") +
   scale_y_continuous("Number of charities", labels = comma,
@@ -291,11 +294,6 @@ gg_vcoss_charitysize_year <- ggplot(vcoss_charitysize_year,
   geom_line(position = "identity",
             size = 7/8) +
   geom_point(size = 14/8) +
-  geom_text(stat = "count",
-            aes(label = ..count..,
-                y = ..count..),
-            colour = "white", position = "stack",
-            vjust = 1.25, check_overlap = TRUE) +
   scale_colour_manual(values = c("cyan", VCOSS_colours),
                       "Charity Size") +
   scale_y_continuous("Number of charities", labels = comma,
@@ -308,4 +306,130 @@ gg_vcoss_charitysize_year <- ggplot(vcoss_charitysize_year,
 ggsave(filename = "R_Visualisations/charitycount_by_VCOSScharitysize_year.png",
        plot = gg_vcoss_charitysize_year,
        height = 8, width = 12,
+       units = "in", dpi = 750)
+
+VCOSS_ACNC_Datasets_Combined$cleaned_charitysize <- factor(VCOSS_ACNC_Datasets_Combined$cleaned_charitysize,
+                                                           levels = c("S", "M", "L"),
+                                                           labels = c("Small", "Medium", "Large"))
+
+incomesource_charsize_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                                 cleaned_charitysize, Year),
+                                        government_grants = sum(government_grants, na.rm = TRUE),
+                                        donations_and_bequests = sum(donations_and_bequests, na.rm = TRUE),
+                                        other_income_and_revenue = sum(other_income, revenue_from_goods_and_services,
+                                                                       revenue_from_investments, all_other_revenue,
+                                                                       na.rm = TRUE))
+
+incomesource_charsize_year <- pivot_longer(incomesource_charsize_year,
+                                           cols = c(government_grants, donations_and_bequests,
+                                                    other_income_and_revenue),
+                                           names_to = "income_source",
+                                           values_to = "income_amount")
+
+incomesource_charsize_year$income_source <- factor(incomesource_charsize_year$income_source,
+                                                   levels = c("government_grants", "donations_and_bequests",
+                                                              "other_income_and_revenue"),
+                                                   labels = c("Government\ngrants", "Donations and\nbequests",
+                                                              "Other income\nand revenue"))
+
+incomesource_charsize_year <- mutate(group_by(incomesource_charsize_year,
+                                              cleaned_charitysize, Year),
+                                     income_proportion = (income_amount / sum(income_amount)))
+
+gg_incomesource_charsize_year <- ggplot(group_by(incomesource_charsize_year,
+                                                 Year, cleaned_charitysize),
+                                        aes(x = Year, y = income_proportion,
+                                            fill = fct_rev(income_source))) +
+  geom_bar(stat = "identity",
+           position = "fill") +
+  geom_text(aes(label = percent(income_proportion,
+                                0.1),
+                y = income_proportion),
+            position = position_stack(vjust = 0.5),
+            check_overlap = TRUE,
+            colour = "white") +
+  facet_wrap(~cleaned_charitysize,
+             nrow = 1) +
+  scale_y_continuous("Proportion of Income",
+                     labels = percent,
+                     expand = c(0.0025, 0.0025)) +
+  scale_fill_manual(values = VCOSS_colours[c(3, 1, 2)],
+                    "Income source") +
+  theme_minimal() +
+  theme(panel.grid.major.x = element_blank(),
+        legend.key.size = unit(8, "mm"))
+
+gg_line_incomesource_charsize_year <- ggplot(incomesource_charsize_year,
+                                             aes(x = Year, y = income_amount,
+                                                 group = income_source, colour = fct_rev(income_source))) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~cleaned_charitysize,
+             nrow = 1,
+             scales = "free_y") +
+  scale_color_manual("Income Source",
+                     values = VCOSS_colours[c(3, 1, 2)]) +
+  scale_y_continuous("Total Income Amount",
+                     labels = dollar_format(scale = 0.000001,
+                                            suffix = "m"),
+                     limits = c(0, NA),
+                     breaks = breaks_extended(n = 6)) +
+  scale_x_discrete("") +
+  ggtitle("Breakdown of income amount by community service charity size and income source") +
+  theme_minimal() +
+  theme(panel.grid.major.x = element_blank())
+
+gg_income_combined <- grid.arrange(gg_line_incomesource_charsize_year,
+                                   gg_incomesource_charsize_year,
+                                   nrow = 2,
+                                   heights = c(2, 3))
+
+ggsave(filename = "R_Visualisations/breakdown_incomesource_by_charitysize_year.png",
+       plot = gg_income_combined,
+       width = 16, height = 10,
+       units = "in", dpi = 750)
+
+
+incomesource_mainact_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                                main_activity, Year),
+                                       government_grants = sum(government_grants, na.rm = TRUE),
+                                       donations_and_bequests = sum(donations_and_bequests, na.rm = TRUE),
+                                       other_income_and_revenue = sum(other_income, revenue_from_goods_and_services,
+                                                                      revenue_from_investments, all_other_revenue,
+                                                                      na.rm = TRUE))
+
+incomesource_mainact_year <- pivot_longer(incomesource_mainact_year,
+                                          cols = c(government_grants, donations_and_bequests, other_income_and_revenue),
+                                          names_to = "income_source",
+                                          values_to = "income_amount")
+
+incomesource_mainact_year$income_source <- factor(incomesource_mainact_year$income_source,
+                                                   levels = c("government_grants", "donations_and_bequests",
+                                                              "other_income_and_revenue"),
+                                                   labels = c("Government\ngrants", "Donations and\nbequests",
+                                                              "Other income\nand revenue"))
+
+incomesource_mainact_year <- mutate(group_by(incomesource_mainact_year,
+                                             main_activity, Year),
+                                    income_proportion = (income_amount / sum(income_amount)))
+
+gg_incomesource_mainact_year <- ggplot(incomesource_mainact_year,
+                                       aes(x = Year, y = income_proportion,
+                                           fill = fct_rev(income_source), group = fct_rev(income_source))) +
+  geom_area() +
+  facet_rep_wrap(~str_wrap(main_activity),
+                 ncol = 3,
+                 repeat.tick.labels = "x") +
+  scale_y_continuous("Proportion of Income",
+                     labels = percent,
+                     limits = c(0, 1)) +
+  scale_x_discrete(expand = c(0.025, 0.025)) +
+  scale_fill_manual("Income source",
+                    values = VCOSS_colours[c(3, 1, 2)]) +
+  theme_minimal() +
+  theme(legend.position = c(0.9, 0.1))
+
+ggsave(filename = "R_Visualisations/incomeshare_by_mainactivity_year.png",
+       plot = gg_incomesource_mainact_year,
+       height = 12, width = 10,
        units = "in", dpi = 750)
