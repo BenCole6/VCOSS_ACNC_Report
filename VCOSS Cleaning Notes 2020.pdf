@@ -1,0 +1,15 @@
+---
+title: "VCOSS Cleaning Notes 2020"
+author: "Ben Cole"
+date: `r format(Sys.Date(), "%d %b %Y")`
+output:
+  pdf_document2:
+    toc: yes
+    toc_depth: 2
+mainfont: Calibre
+fontsize: 12pt
+linestretch: 1.15
+geometry: margin = 17.5mm
+---
+
+# Hello
