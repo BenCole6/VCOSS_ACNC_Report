@@ -1,0 +1,72 @@
+---
+title: "VCOSS Cleaning Notes 2020"
+author: "Ben Cole"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+output:
+  bookdown::pdf_document2:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
+mainfont: Arial
+fontsize: 12pt
+linestretch: 1.15
+geometry: margin = 17.5mm
+---
+
+```{r echo=FALSE, message=F, warning=F}
+
+library(pacman)
+
+p_load(tidyverse,
+       DT,
+       bookdown)
+
+```
+
+# Previous work {-}
+
+The Victorian Council of Social Service (*VCOSS*) has produced reports in past years using ACNC data cleaned with proprietary software requiring subscriptions. The R language was chosen to clean the data sets for this new VCOSS report so that the cleaning procedures could be transparent and accessible without need for purchasing software.  
+Previous reports from VCOSS had not cleaned the 2018 ACNC data as it had not been released at the time. Considering the 2018 data needed to be cleaned and filtered to VCOSS guidelines, it was decided to clean the ACNC data from years 2014 - 2018 inclusive for consistency. Some new decisions were made while cleaning the data that produced different data sets than previously used by VCOSS.
+
+```{r, echo=FALSE, results='asis'}
+cat("\\twocolumn")
+```
+
+# Individual Charities Data
+
+## Data Source
+
+The ACNC data was sourced from [**the data.gov.au website**](https://data.gov.au/data/) for [**2014**](https://data.gov.au/data/dataset/acnc2014ais), [**2015**](https://data.gov.au/data/dataset/acnc2015ais), [**2016**](https://data.gov.au/data/dataset/acnc2016ais), [**2017**](https://data.gov.au/data/dataset/acnc-2017-annual-information-statement-data), and [**2018**](https://data.gov.au/data/dataset/acnc-2018-annual-information-statement-data) at the beginning of the project.
+
+## Data_Cleaning.R script
+
+As with any script of code, the *Data_Cleaning.R* script serves as a record of the cleaning procedures as well as a reusable+reproducible means for repetitive cleaning of the data.
+
+### Recoding booleans
+
+Boolean columns in the data were stored with the values "y" and "n" throughout the years, so were recoded to `TRUE` and `FALSE` which are native to R.
+
+### Checking for Invalid ABNs
+
+This is legacy code from previous work by the Future Social Service Institute and was included in initial stages of cleaning. Subsequent consultation with VCOSS led to the decision being made not to remove charities with invalid ABNs. The code is left in place, but the filter is not applied.
+
+### Main Activity
+
+Selecting charities based on their reported *Main Activity* is the first filter applied by the script. If a charity reported that they performed any of the activities from the list below they were retained, and any charity that did not was removed.  
+The following activities varied in their naming structure throughout the years, so variants were deliberately used to catch them. For example, `Main Activity` in the 2015 data contained "Civic and advocacy activities", while the 2016 data contained **both** "Civic and advocacy activities" and "Advocacy and civic activities". 
+
+> Aged care activities  
+> Civic and advocacy activities  
+> Economic, social, and community development  
+> Emergency relief  
+> Employment and training  
+> Housing activities  
+> Income support and maintenance  
+> International activities  
+> Law and legal services  
+> Mental health and crisis intervention  
+> Other education  
+> Other health service delivery  
+> Social services  
+
