@@ -9,7 +9,10 @@ p_load(ggplot2,
        scales,
        lemon,
        gganimate,
-       gridExtra)
+       gridExtra,
+       rgdal,
+       geosphere,
+       mapproj)
 
 VCOSS_colours <- c("#ea5d0a", "#4b55a1", "#f6a400", "black", "grey50")
 
@@ -36,10 +39,8 @@ Orgs_by_MainAct_Year <- rename(arrange(pivot_wider(Orgs_by_MainAct_Year,
 Orgs_by_MainAct_Year <- mutate(Orgs_by_MainAct_Year,
                                "Change from 2017 to 2018" = (`No. of Orgs. 2018` - `No. of Orgs. 2017`))
 
-rbind(Orgs_by_MainAct_Year,
-      colSums(Orgs_by_MainAct_Year[2:ncol(Orgs_by_MainAct_Year)]))
-
-
+Orgs_by_MainAct_Year <- rbind(Orgs_by_MainAct_Year,
+                              colSums(Orgs_by_MainAct_Year[2:ncol(Orgs_by_MainAct_Year)]))
 
 ## Income
 
@@ -47,7 +48,8 @@ totgrosinc_mainact_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
                                               main_activity, Year),
                                      total_gross_income = sum(total_gross_income, na.rm = TRUE))
 
-gg_totgrosinc_mainact_year <- ggplot(totgrosinc_mainact_year,
+gg_totgrosinc_mainact_year <- ggplot(filter(totgrosinc_mainact_year,
+                                            as.integer(as.character(Year)) >= 2016),
                                      aes(x = str_wrap(main_activity, 18), y = total_gross_income,
                                          fill = Year)) +
   geom_bar(stat = "identity",
@@ -58,11 +60,11 @@ gg_totgrosinc_mainact_year <- ggplot(totgrosinc_mainact_year,
                                             accuracy = 0.1,
                                             suffix = "bn"),
                      expand = c(0.025, 0.05)) +
-  scale_fill_manual(values = rev(VCOSS_colours)) +
-  ggtitle("Victorian community services industry total gross income 2014 - 2018",
+  scale_fill_manual(values = VCOSS_colours) +
+  ggtitle("Victorian community services industry total gross income 2016 - 2018",
           subtitle = "Main activity as reported in the AIS") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 55,
+  theme(axis.text.x = element_text(angle = 35,
                                    hjust = 1),
         panel.grid.major.x = element_blank(),
         axis.ticks.x = element_line(colour = "grey50"))
@@ -86,7 +88,8 @@ beneficiaries_mainact_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
 beneficiaries_mainact_year <- filter(beneficiaries_mainact_year,
                                      !is.na(main_beneficiaries))
 
-gg_beneficiaries_mainact_year <- ggplot(beneficiaries_mainact_year,
+gg_beneficiaries_mainact_year <- ggplot(filter(beneficiaries_mainact_year,
+                                               !str_detect(main_beneficiaries, "General community")),
                                         aes(x = `Number of Charities`, fill = fct_rev(Year),
                                             y = fct_rev(str_wrap(main_beneficiaries, 30)))) +
   geom_bar(stat = "identity",
@@ -99,7 +102,7 @@ gg_beneficiaries_mainact_year <- ggplot(beneficiaries_mainact_year,
                     "Year",
                     guide = guide_legend(reverse = TRUE)) +
   ggtitle("Beneficiaries of Victorian community services industry 2017 - 2018",
-          subtitle = "Number of charities servicing beneficiaries as reported in the AIS") +
+          subtitle = "Main beneficiaries as reported in the AIS") +
   theme_minimal() +
   theme(panel.grid.major.y = element_blank(),
         axis.ticks.y = element_line(colour = "grey50"))
@@ -120,23 +123,55 @@ budgetstatus_mainact_year <- pivot_longer(budgetstatus_mainact_year,
                                           names_to = "Budget status",
                                           values_to = "Number of Charities")
 
-gg_budgetstatus_mainact_year <- ggplot(budgetstatus_mainact_year,
-                                       aes(x = Year, y = `Number of Charities`,
+budgetstatus_mainact_year <- mutate(group_by(budgetstatus_mainact_year,
+                                             main_activity, Year),
+                                    proportions = `Number of Charities` / sum(`Number of Charities`, na.rm = TRUE))
+
+gg_budgetstatus_mainact_year <- ggplot(filter(budgetstatus_mainact_year,
+                                              as.integer(as.character(Year)) >= 2016),
+                                       aes(x = Year, y = proportions,
                                            fill = `Budget status`, group = `Budget status`)) +
-  geom_area(stat = "identity")  +
+  geom_bar(stat = "identity",
+           position = "fill")  +
+  geom_text(aes(label = percent(proportions, 0.1),
+                y = proportions),
+            position = position_fill(vjust = 0.5),
+            size = 2.5) +
   facet_rep_wrap(~str_wrap(main_activity, 20),
                  scales = "free_y",
                  repeat.tick.labels = "x",
                  ncol = 3) +
   scale_fill_manual(values = VCOSS_colours) +
+  scale_y_continuous("Proportion of charities",
+                     labels = percent) +
   ggtitle("Victorian community service industry budget status",
           subtitle = "Main activity as reported in AIS") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 55, hjust = 1))
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.ticks.x = element_line(color = "grey"))
 
 ggsave(filename = "R_Visualisations/budgetstatus_by_year_mainact.png",
        plot = gg_budgetstatus_mainact_year,
-       height = 12, width = 8,
+       height = 15, width = 10,
+       units = "in", dpi = 750)
+
+gg_pie_budgetstatus_mainact_year <- ggplot(filter(budgetstatus_mainact_year,
+                                                  as.integer(Year) >= 4),
+                                           aes(y = proportions, fill = `Budget status`,
+                                               x = Year)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Year),
+            y = 0.5, check_overlap = TRUE) +
+  facet_wrap(~ str_wrap(main_activity, 20)) +
+  scale_fill_manual(values = VCOSS_colours) +
+  coord_polar("y", start = 0) +
+  ggtitle("Budget status of Victorian community service charities 2017 - 2018") +
+  theme_void()
+
+ggsave(filename = "R_Visualisations/piechart_budgetstatus_by_year_mainact.png",
+       plot = gg_pie_budgetstatus_mainact_year,
+       height = 12, width = 12,
        units = "in", dpi = 750)
 
 mainact_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
@@ -156,29 +191,45 @@ gg_mainact_year <- ggplot(group_by(mainact_year, main_activity),
                  repeat.tick.labels = "x",
                  ncol = 3) +
   scale_y_continuous("Number of Charities",
-                     breaks = breaks_extended(3)) +
+                     limits = c(0, NA)) +
   ggtitle("Change in Victorian community service charities over time",
           subtitle = "Main activity as reported in the AIS") +
   theme_minimal() +
-  theme(panel.grid.major.x = element_blank())
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank())
 
 ggsave(filename = "R_Visualisations/charitycount_by_mainact_year.png",
        plot = gg_mainact_year,
        height = 12, width = 8,
        units = "in", dpi = 750)  
 
-gg_employeeexpenses <- ggplot(VCOSS_ACNC_Datasets_Combined,
-                              aes(x = employeeexpenses_per_employee,
-                                  fill = Year, colour = Year, frame = Year)) +
-  geom_density() +
-  facet_rep_wrap(~main_activity,
-                 scales = "free",
-                 repeat.tick.labels = "x",
-                 ncol = 3) +
+gg_totalcharity_count <- ggplot(VCOSS_ACNC_Datasets_Combined,
+                                aes(x = Year)) +
+  geom_bar(fill = VCOSS_colours[3]) +
+  geom_text(aes(label = comma(..count..)),
+            stat = "count",
+            vjust = 1.5) +
+  scale_y_continuous("Number of charities",
+                     labels = comma,
+                     expand = c(0.05, 0.05)) +
+  ggtitle("Total Victorian community service charities 2014 - 2016") +
+  theme_minimal() +
+  theme(panel.grid.major.x = element_blank())
+
+ggsave(filename = "R_Visualisations/total_charitycount_by_year.png",
+       plot = gg_totalcharity_count,
+       height = 9, width = 10,
+       units = "in", dpi = 750)  
+
+gg_employeeexpenses <- ggplot(filter(VCOSS_ACNC_Datasets_Combined,
+                                     as.integer(as.character(Year)) >= 2016),
+                              aes(x = employeeexpenses_per_employee)) +
+  geom_histogram(fill = VCOSS_colours[3],
+                 colour = "grey75") +
   scale_x_continuous("Employee Expenses per Employee",
                      labels = dollar,
                      trans = "log10") +
-  scale_y_continuous("Proportion of charities", labels = NULL) +
+  scale_y_continuous("Number of charities", labels = comma) +
   scale_fill_manual(values = rev(VCOSS_colours)) +
   scale_colour_manual(values = rev(VCOSS_colours)) +
   guides(colour = "none", fill = "none") +
@@ -186,30 +237,28 @@ gg_employeeexpenses <- ggplot(VCOSS_ACNC_Datasets_Combined,
           "Average expenses per employee as reported in the AIS\nYear: {closest_state}") +
   theme_minimal() +
   theme(panel.grid.minor = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.border = element_rect(colour = "aliceblue", size = 2,
-                                    fill = NA),
+        panel.grid.major.x = element_blank(),
         text = element_text(size = 18)) +
-  transition_states(Year,
-                    state_length = 10)
+  transition_states(as.integer(as.character(Year)),
+                    state_length = 6,
+                    transition_length = 0)
 
 anim_save(filename = "R_Visualisations/vic_commservice_employeeexpenses.gif",
           animation = gg_employeeexpenses,
           end_pause = 25, fps = 4,
-          height = 1750, width = 1250)
+          height = 1000, width = 1250)
 
-gg_totalgrossincome <- ggplot(VCOSS_ACNC_Datasets_Combined,
-                              aes(x = total_gross_income,
-                                  fill = Year, colour = Year, frame = Year)) +
-  geom_density() +
-  facet_rep_wrap(~main_activity,
-                 scales = "free",
-                 repeat.tick.labels = "x",
-                 ncol = 3) +
+gg_totalgrossincome <- ggplot(filter(VCOSS_ACNC_Datasets_Combined,
+                                     as.integer(as.character(Year)) >= 2016),
+                              aes(x = total_gross_income, frame = Year)) +
+  geom_histogram(fill = VCOSS_colours[3],
+                 colour = "grey75") +
   scale_x_continuous("Total Gross Income",
                      labels = dollar,
                      trans = "log10") +
-  scale_y_continuous("Proportion of charities", labels = NULL) +
+  scale_y_continuous("Number of charities",
+                     labels = comma,
+                     expand = c(0.05, 0.05)) +
   scale_fill_manual(values = rev(VCOSS_colours)) +
   scale_colour_manual(values = rev(VCOSS_colours)) +
   guides(colour = "none", fill = "none") +
@@ -217,19 +266,18 @@ gg_totalgrossincome <- ggplot(VCOSS_ACNC_Datasets_Combined,
           "Total gross income as reported in the AIS\nYear: {closest_state}") +
   theme_minimal() +
   theme(panel.grid.minor = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.border = element_rect(colour = "aliceblue", size = 2,
-                                    fill = NA),
+        panel.grid.major.x = element_blank(),
         text = element_text(size = 18),
         axis.text.x = element_text(angle = 20, hjust = 1),
         axis.ticks.x = element_line(colour = "grey"))  +
-  transition_states(Year,
-                    state_length = 10)
+  transition_states(as.integer(as.character(Year)),
+                    state_length = 6,
+                    transition_length = 0)
 
 anim_save(filename = "R_Visualisations/vic_commservice_totalgrossincome.gif",
           animation = gg_totalgrossincome,
           end_pause = 25, fps = 4,
-          height = 1750, width = 1250)
+          height = 1000, width = 1250)
 
 mainact_year_donationsmade <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
                                                  main_activity, Year),
@@ -237,8 +285,12 @@ mainact_year_donationsmade <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
                                                                    grants_and_donations_made_for_use_outside_australia,
                                                                    na.rm = TRUE))
 
-gg_mainact_year_donationsmade <- ggplot(mainact_year_donationsmade,
-                                        aes(x = str_wrap(main_activity, 20),
+mainact_year_donationsmade_16to18 <- filter(mainact_year_donationsmade,
+                                            as.integer(as.character(Year)) >= 2016,
+                                            total_donations_made > 0)
+
+gg_mainact_year_donationsmade <- ggplot(mainact_year_donationsmade_16to18,
+                                        aes(x = str_wrap(main_activity, 30),
                                             y = total_donations_made,
                                             fill = Year)) +
   geom_bar(stat = "identity",
@@ -251,10 +303,11 @@ gg_mainact_year_donationsmade <- ggplot(mainact_year_donationsmade,
   ggtitle("All donations made by Victorian community service charities",
           subtitle = "Main activity as reported in the AIS") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 20, hjust = 1),
+  theme(axis.text.x = element_text(angle = 35, hjust = 1,
+                                   size = 8),
         axis.ticks.x = element_line(colour = "grey"),
         panel.grid.major.x = element_blank()) +
-  scale_fill_manual(values = rev(VCOSS_colours))
+  scale_fill_manual(values = VCOSS_colours)
 
 ggsave(filename = "R_Visualisations/alldonationsmade_by_mainact_year.png",
        plot = gg_mainact_year_donationsmade,
@@ -336,7 +389,8 @@ incomesource_charsize_year <- mutate(group_by(incomesource_charsize_year,
                                               cleaned_charitysize, Year),
                                      income_proportion = (income_amount / sum(income_amount)))
 
-gg_incomesource_charsize_year <- ggplot(group_by(incomesource_charsize_year,
+gg_incomesource_charsize_year <- ggplot(group_by(filter(incomesource_charsize_year,
+                                                       as.integer(as.character(Year)) >= 2016),
                                                  Year, cleaned_charitysize),
                                         aes(x = Year, y = income_proportion,
                                             fill = fct_rev(income_source))) +
@@ -359,7 +413,8 @@ gg_incomesource_charsize_year <- ggplot(group_by(incomesource_charsize_year,
   theme(panel.grid.major.x = element_blank(),
         legend.key.size = unit(8, "mm"))
 
-gg_line_incomesource_charsize_year <- ggplot(incomesource_charsize_year,
+gg_line_incomesource_charsize_year <- ggplot(filter(incomesource_charsize_year,
+                                                    as.integer(as.character(Year)) >= 2016),
                                              aes(x = Year, y = income_amount,
                                                  group = income_source, colour = fct_rev(income_source))) +
   geom_line() +
@@ -433,3 +488,278 @@ ggsave(filename = "R_Visualisations/incomeshare_by_mainactivity_year.png",
        plot = gg_incomesource_mainact_year,
        height = 12, width = 10,
        units = "in", dpi = 750)
+
+
+totalstaff_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                      Year),
+                             staff_part_time = sum(staff_part_time, na.rm = TRUE),
+                             staff_full_time = sum(staff_full_time, na.rm = TRUE),
+                             staff_casual = sum(staff_casual, na.rm = TRUE),
+                             staff_volunteers = sum(staff_volunteers, na.rm = TRUE))
+
+totalstaff_year <- pivot_longer(totalstaff_year,
+                                cols = c(staff_part_time, staff_full_time,
+                                         staff_casual, staff_volunteers),
+                                names_to = "employment_type",
+                                values_to = "number_of_employees")
+
+
+state_shpfile <- readOGR("Postcodes_shpfiles/ll_gda94/sde_shape/whole/VIC/VMADMIN/layer/postcode_polygon.shp")
+
+state_postcodes <- fortify(state_shpfile)
+
+postcode_id <- as.data.frame(cbind(unique(state_postcodes$id),
+                                   state_shpfile[["POSTCODE"]]))
+
+colnames(postcode_id) <- c("ID", "Postcode")
+
+state_postcodes <- left_join(state_postcodes,
+                             postcode_id,
+                             by = c("id" = "ID"))
+
+state_postcodes <- rbind(mutate(state_postcodes,
+                                Year = 2014),
+                         mutate(state_postcodes,
+                                Year = 2015),
+                         mutate(state_postcodes,
+                                Year = 2016),
+                         mutate(state_postcodes,
+                                Year = 2017),
+                         mutate(state_postcodes,
+                                Year = 2018))
+
+state_postcodes$Year <- factor(state_postcodes$Year)
+
+paidstaff_postcode <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                         Year, postcode),
+                                paid_staff = sum(staff_full_time,
+                                                 staff_part_time,
+                                                 staff_casual))
+
+paidstaff_postcode_poly <- left_join(state_postcodes,
+                                     paidstaff_postcode,
+                                     by = c("Postcode" = "postcode",
+                                            "Year" = "Year"))
+
+# paidstaff_postcode_poly$paid_staff[which(paidstaff_postcode_poly$paid_staff == 0)] <- 0.1
+
+max(paidstaff_postcode_poly$paid_staff, na.rm = TRUE)
+
+logscalefunc <- function(from=1, to = 1000000) {
+  
+  max_power <- ceiling(log10(to))
+  
+  10^(0:max_power)
+  
+}
+
+vcoss_grad <- function(ncolours) {div_gradient_pal(low = "#6e98b5",
+                                                   mid = "#f7e707",
+                                                   high = "#ea3609")(seq(0, 1, length.out = ncolours))}
+
+paidstaff_postcode_poly <- mutate(paidstaff_postcode_poly,
+                                  paidstaff_log = factor(10^ceiling(log10(paid_staff))))
+
+staff_labels <- comma(as.numeric(as.character(levels(paidstaff_postcode_poly$paidstaff_log))), 1)
+
+levels(paidstaff_postcode_poly$paidstaff_log) <- staff_labels
+
+centroid_data <- NULL
+
+for(ith_postcode in unique(paidstaff_postcode_poly$Postcode)) {
+  
+  temp_data <- filter(paidstaff_postcode_poly,
+                      Postcode == ith_postcode)
+  
+  centroid <- centroid(cbind(temp_data$long, temp_data$lat))
+  
+  centroid_data <- rbind(centroid_data,
+                         data.frame(Postcode = ith_postcode,
+                                    centroid_long = centroid[1], centroid_lat = centroid[2]))
+  
+}
+
+paidstaff_postcode_poly$paidstaff_log <- replace_na(paidstaff_postcode_poly$paidstaff_log, 0)
+
+gg_polygon_paidstaff_year_metro <- ggplot(filter(paidstaff_postcode_poly,
+                                                 Year == "2018"),
+                                          aes(x = long, y = lat,
+                                              fill = paidstaff_log, group = Postcode)) +
+  geom_polygon(aes(subgroup = piece),
+               colour = NA) +
+  geom_text(data = centroid_data,
+            inherit.aes = FALSE,
+            aes(x = centroid_long, y = centroid_lat,
+                label = Postcode),
+            check_overlap = TRUE) +
+  scale_fill_manual("Total paid staff",
+                    values = c("grey75", vcoss_grad(6)),
+                    guide = "legend") +
+  ggtitle("Total paid staff in Victorian community service charities per postcode in 2018",
+          "Metro Melbourne area\n ") +
+  coord_equal(xlim = c(144.25, 145.50),
+              ylim = c(-38.50, -37.50)) +
+  theme_void()
+
+ggsave(plot = gg_polygon_paidstaff_year_metro,
+       filename = "R_Visualisations/metromap_paidstaff_postcode.png",
+       height = 15, width = 18,
+       units = "in", dpi = 1000)
+
+gg_polygon_paidstaff_year_state <- ggplot(filter(paidstaff_postcode_poly,
+                                                 Year == "2018"),
+                                          aes(x = long, y = lat,
+                                              fill = paidstaff_log, group = Postcode)) +
+  geom_polygon(aes(subgroup = piece),
+               colour = NA) +
+  scale_fill_manual("Total paid staff",
+                    values = c("grey75", vcoss_grad(6)),
+                    guide = "legend") +
+  ggtitle("Total paid staff in Victorian community service charities per postcode 2018") +
+  coord_equal() +
+  theme_void()
+
+ggsave(plot = gg_polygon_paidstaff_year_state,
+       filename = "R_Visualisations/statemap_paidstaff_postcode.png",
+       height = 15, width = 18,
+       units = "in", dpi = 1000)
+
+volunteers_postcode_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                               postcode, Year),
+                                      volunteers = sum(staff_volunteers, na.rm = TRUE))
+
+volunteers_postcode_year <- filter(volunteers_postcode_year,
+                                   Year != "2014")
+
+state_postcodes_15to18 <- filter(state_postcodes,
+                                 Year != 2014)
+
+volunteers_postcode_year <- left_join(state_postcodes_15to18,
+                                      volunteers_postcode_year,
+                                      by = c("Postcode"="postcode",
+                                             "Year"="Year"))
+
+volunteers_postcode_year <- mutate(volunteers_postcode_year,
+                                   volunteers_log = 10^ceiling(log10(volunteers)))
+
+volunteers_postcode_year$volunteers_log <- factor(volunteers_postcode_year$volunteers_log)
+
+volunteer_labels <- levels(volunteers_postcode_year$volunteers_log)
+
+volunteer_labels <- comma(as.integer(volunteer_labels), 1)
+
+levels(volunteers_postcode_year$volunteers_log) <- volunteer_labels
+
+volunteers_postcode_year$volunteers_log <- replace_na(volunteers_postcode_year$volunteers_log, 0)
+
+gg_polygon_volunteers_year_metro <- ggplot(filter(volunteers_postcode_year,
+                                                  Year == 2018),
+                                          aes(x = long, y = lat,
+                                              fill = volunteers_log, group = Postcode)) +
+  geom_polygon(colour = NA) +
+  geom_text(data = centroid_data,
+            inherit.aes = FALSE,
+            aes(x = centroid_long, y = centroid_lat,
+                label = Postcode),
+            check_overlap = TRUE) +
+  scale_fill_manual("Total volunteers",
+                    values = c("grey75", vcoss_grad(6)),
+                    guide = "legend") +
+  ggtitle("Total volunteers in Victorian community service charities per postcode in 2018",
+          "Metro Melbourne area\n ") +
+  coord_equal(xlim = c(144.25, 145.50),
+              ylim = c(-38.50, -37.50)) +
+  theme_void() +
+  theme(panel.spacing = unit(5, "mm"))
+
+ggsave(plot = gg_polygon_volunteers_year_metro,
+       filename = "R_Visualisations/metromap_volunteers_postcode.png",
+       height = 15, width = 18,
+       units = "in", dpi = 1000)
+
+gg_polygon_volunteers_year_state <- ggplot(filter(volunteers_postcode_year,
+                                                  Year == "2018"),
+                                           aes(x = long, y = lat,
+                                               fill = volunteers_log, group = Postcode)) +
+  geom_polygon(aes(subgroup = piece),
+               colour = NA) +
+  scale_fill_manual("Total volunteers",
+                    values = c("grey75", vcoss_grad(8)),
+                    na.value = "grey25",
+                    guide = "legend") +
+  ggtitle("Total volunteers in Victorian community service charities per postcode in 2018") +
+  coord_equal() +
+  theme_void()
+
+ggsave(plot = gg_polygon_volunteers_year_state,
+       filename = "R_Visualisations/statemap_volunteers_postcode_year.png",
+       height = 15, width = 18,
+       units = "in", dpi = 1000)
+
+charitycount_postcode <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                            Year, postcode),
+                                   n_charities = n())
+
+charitycount_postcode_2018 <- filter(charitycount_postcode,
+                                     Year == 2018)
+
+charitycount_postcode_2018_poly <- left_join(filter(state_postcodes,
+                                                    Year == 2018),
+                                             charitycount_postcode_2018,
+                                             by = c("Postcode" = "postcode",
+                                                    "Year" = "Year"))
+
+charitycount_postcode_2018_poly$n_charities <- replace_na(charitycount_postcode_2018_poly$n_charities,
+                                                          0)
+
+
+charitycount_postcode_2018_poly <- mutate(charitycount_postcode_2018_poly,
+                                          charitycount_log = 10^(ceiling(log10(n_charities))))
+
+charitycount_postcode_2018_poly$charitycount_log <- factor(charitycount_postcode_2018_poly$charitycount_log)
+
+charcount_labels <- comma(as.integer(levels(charitycount_postcode_2018_poly$charitycount_log)), 1)
+
+levels(charitycount_postcode_2018_poly$charitycount_log) <- charcount_labels
+
+gg_state_charitycount_postcode_2018_poly <- ggplot(charitycount_postcode_2018_poly,
+                                                   aes(x = long, y = lat,
+                                                       group = group, subgroup = piece,
+                                                       fill = charitycount_log)) +
+  geom_polygon() +
+  scale_fill_manual("Number of charities",
+                    values = c("grey75", vcoss_grad(4))) +
+  ggtitle("Total number of Victorian community service charities per postcode 2018") +
+  coord_equal() +
+  theme_void()
+
+ggsave(plot = gg_state_charitycount_postcode_2018_poly,
+       filename = "R_Visualisations/statemap_totalcharities_postcode.png",
+       height = 15, width = 18,
+       units = "in", dpi = 1000)
+
+gg_charcount_postcode_metro <- ggplot(charitycount_postcode_2018_poly,
+                                      aes(x = long, y = lat,
+                                          group = group, subgroup = piece,
+                                          fill = charitycount_log)) +
+  geom_polygon() +
+  geom_text(inherit.aes = FALSE,
+            data = centroid_data,
+            aes(x = centroid_long, y = centroid_lat,
+                label = Postcode),
+            size = 3.5,
+            check_overlap = TRUE) +
+  scale_fill_manual("Number of charities",
+                    values = c("grey75", vcoss_grad(4))) +
+  ggtitle("Total number of Victorian community service charities per postcode 2018",
+          "Metro Melbourne area\n ") +
+  coord_equal(xlim = c(144.25, 145.50),
+              ylim = c(-38.50, -37.50)) +
+  theme_void()
+
+ggsave(plot = gg_charcount_postcode_metro,
+       filename = "R_Visualisations/metromap_totalcharities_postcode.png",
+       height = 15, width = 18,
+       units = "in", dpi = 1000)
+
+beepr::beep(5)

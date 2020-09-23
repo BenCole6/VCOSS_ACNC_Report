@@ -346,27 +346,27 @@ CommunitySector_activities <- c("aged care",
                                 "law legal services", "law services", "legal services",
                                 "mental health crisis intervention", "mental health", "crisis intervention",
                                 "other education",
-                                "other health service delivery", "health service delivery",
+                                "other health service delivery", "health service delivery", "hospital services",
                                 "social service", "social services")
 
 # ## commented out on advice from VCOSS
-# Community_sector_colnames <- make_clean_names(CommunitySector_activities) 
+# Community_sector_colnames <- make_clean_names(CommunitySector_activities)
 # 
 # Community_sector_other_varcreator <- function(dataset) {
-#         
+# 
 #         temp_df <- select(dataset, any_of(Community_sector_colnames))
-#         
+# 
 #         matching_cols <- colnames(temp_df)[which(colnames(temp_df) %in% Community_sector_colnames)]
-#         
+# 
 #         temp_df <- mutate(rowwise(dataset),
 #                           community_sector_other = if_else(sum(c_across(any_of(matching_cols)),
 #                                                                na.rm = TRUE)>0,
 #                                                            true = TRUE, false = FALSE))
-#         
+# 
 #         return(temp_df)
-#         
+# 
 # }
-# f
+# 
 # ACNC_Datasets_13to18 <- lapply(ACNC_Datasets_13to18,
 #                                Community_sector_other_varcreator)
 
@@ -590,7 +590,8 @@ VCOSS_ACNC_Datasets_14to18 <- lapply(ACNC_Datasets_14to18,
                                                     any_of(VCOSS_ACNC_2016_columns),
                                                     contains("government_grants"),
                                                     government_grants = contains("revenue_from_government"),
-                                                    contains("beneficiaries"))
+                                                    contains("beneficiaries"),
+                                                    postcode)
                                      })
 
 VCOSSACNC_missingcols <- lapply(VCOSS_ACNC_Datasets_14to18,
