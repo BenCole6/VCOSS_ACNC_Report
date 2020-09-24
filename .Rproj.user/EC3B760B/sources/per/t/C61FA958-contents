@@ -31,5 +31,5 @@ cat("\\twocolumn")
 # Previous work
 
 The Victorian Council of Social Service (*VCOSS*) has produced reports in past years using ACNC data cleaned with proprietary software requiring subscriptions. The R language was chosen to clean the data sets for this new VCOSS report so that the cleaning procedures could be transparent and accessible without need for purchasing software.  
-Previous reports from VCOSS had not cleaned the 2018 ACNC data as it had not been released at the time. Considering the 2018 data needed to be cleaned and filtered to VCOSS guidelines, it was decided to clean the ACNC data from years 2014 - 2018 inclusive for consistency. Some new decisions were made while cleaning the data that produced different data sets than previously used by VCOSS. This document will revise previous decisions made and 
+Previous reports from VCOSS had not cleaned the 2018 ACNC data as it had not been released at the time. Considering the 2018 data needed to be cleaned and filtered to VCOSS guidelines, it was decided to clean the ACNC data from years 2014 - 2018 inclusive for consistency. Some new decisions were made while cleaning the data that produced different data sets than previously used by VCOSS.
 

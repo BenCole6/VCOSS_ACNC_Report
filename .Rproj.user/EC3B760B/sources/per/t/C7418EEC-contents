@@ -127,10 +127,13 @@ budgetstatus_mainact_year <- mutate(group_by(budgetstatus_mainact_year,
                                              main_activity, Year),
                                     proportions = `Number of Charities` / sum(`Number of Charities`, na.rm = TRUE))
 
+budgetstatus_mainact_year$`Budget status` <- factor(budgetstatus_mainact_year$`Budget status`,
+                                                    levels = c("deficit", "balanced", "surplus"))
+
 gg_budgetstatus_mainact_year <- ggplot(filter(budgetstatus_mainact_year,
                                               as.integer(as.character(Year)) >= 2016),
                                        aes(x = Year, y = proportions,
-                                           fill = `Budget status`, group = `Budget status`)) +
+                                           fill = fct_rev(`Budget status`), group = fct_rev(`Budget status`))) +
   geom_bar(stat = "identity",
            position = "fill")  +
   geom_text(aes(label = percent(proportions, 0.1),
@@ -141,7 +144,9 @@ gg_budgetstatus_mainact_year <- ggplot(filter(budgetstatus_mainact_year,
                  scales = "free_y",
                  repeat.tick.labels = "x",
                  ncol = 3) +
-  scale_fill_manual(values = VCOSS_colours) +
+  scale_fill_manual("Budget Status",
+                    values = VCOSS_colours,
+                    labels = function(x) str_to_sentence(x)) +
   scale_y_continuous("Proportion of charities",
                      labels = percent) +
   ggtitle("Victorian community service industry budget status",
@@ -154,6 +159,96 @@ gg_budgetstatus_mainact_year <- ggplot(filter(budgetstatus_mainact_year,
 ggsave(filename = "R_Visualisations/budgetstatus_by_year_mainact.png",
        plot = gg_budgetstatus_mainact_year,
        height = 15, width = 10,
+       units = "in", dpi = 750)
+
+budgetstatus_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                        Year),
+                               deficit = sum(net_surplus_deficit <0),
+                               balanced = sum(net_surplus_deficit == 0),
+                               surplus = sum(net_surplus_deficit > 0))
+
+budgetstatus_year <- pivot_longer(budgetstatus_year,
+                                  cols = c(deficit, balanced, surplus),
+                                  names_to = "budget_status",
+                                  values_to = "n_charities")
+
+budgetstatus_year <- mutate(group_by(budgetstatus_year,
+                                     Year),
+                            proportion = (n_charities / sum(n_charities, na.rm = TRUE)))
+
+budgetstatus_year$budget_status <- factor(budgetstatus_year$budget_status, 
+                                          levels = c("deficit", "balanced", "surplus"))
+
+gg_budgetstatus_year <- ggplot(budgetstatus_year,
+                               aes(x = Year, y = proportion,
+                                   fill = fct_rev(budget_status))) +
+  geom_bar(stat = "identity",
+           position = "fill") +
+  geom_text(aes(label = percent(proportion, 0.1)),
+            position = position_stack(vjust = 0.5)) +
+  scale_fill_manual("Budget status", 
+                    values = VCOSS_colours,
+                    labels = function(x) str_to_sentence(x)) +
+  scale_y_continuous("Proportion of charities",
+                     labels = percent,
+                     expand = c(0.0125, 0.0125)) +
+  ggtitle("Victorian community service industry budget status") +
+  theme_minimal() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.ticks.x = element_line(color = "grey"))
+
+ggsave(filename = "R_Visualisations/budgetstatus_by_year.png",
+       plot = gg_budgetstatus_year,
+       height = 10, width = 12,
+       units = "in", dpi = 750)
+
+
+budgetstatus_vcosscharsize_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                                      Year, VCOSS_charitysize),
+                                             deficit = sum(net_surplus_deficit < 0),
+                                             balanced = sum(net_surplus_deficit == 0),
+                                             surplus = sum(net_surplus_deficit > 0))
+
+budgetstatus_vcosscharsize_year <- pivot_longer(budgetstatus_vcosscharsize_year,
+                                                cols = c(deficit, balanced, surplus),
+                                                names_to = "budget_status",
+                                                values_to = "n_charities")
+
+budgetstatus_vcosscharsize_year <- mutate(group_by(budgetstatus_vcosscharsize_year,
+                                                   Year, VCOSS_charitysize),
+                                          proportion = (n_charities / sum(n_charities, na.rm = TRUE)))
+
+budgetstatus_vcosscharsize_year$budget_status <- factor(budgetstatus_vcosscharsize_year$budget_status,
+                                                        levels = c("deficit", "balanced", "surplus"))
+
+
+gg_budgetstatus_vcosscharsize_year <- ggplot(filter(budgetstatus_vcosscharsize_year,
+                                                    proportion > 0.00009),
+                                             aes(x = Year, y = proportion,
+                                                 fill = fct_rev(budget_status), group = fct_rev(budget_status))) +
+  geom_bar(stat = "identity",
+           position = "fill") +
+  geom_text(aes(label = percent(proportion, 0.1)),
+            position = position_stack(vjust = 0.5)) +
+  facet_rep_wrap(~VCOSS_charitysize,
+                 repeat.tick.labels = "x") +
+  scale_fill_manual("Budget status", 
+                    values = VCOSS_colours,
+                    labels = function(x) str_to_sentence(x)) +
+  scale_y_continuous("Proportion of charities",
+                     labels = percent,
+                     expand = c(0.0125, 0.0125)) +
+  ggtitle("Victorian community service industry budget status",
+          "VCOSS-specified charity size based on Total Gross Income") +
+  theme_minimal() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.ticks.x = element_line(color = "grey"))
+
+ggsave(filename = "R_Visualisations/budgetstatus_by_vcosscharitysize_year.png",
+       plot = gg_budgetstatus_vcosscharsize_year,
+       height = 10, width = 12,
        units = "in", dpi = 750)
 
 gg_pie_budgetstatus_mainact_year <- ggplot(filter(budgetstatus_mainact_year,

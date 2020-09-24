@@ -3,23 +3,23 @@
     "path": "B:/Analytics/VCOSS_ACNC_Report/VCOSS_cleaning_notes.rmd",
     "project_path": "VCOSS_cleaning_notes.rmd",
     "type": "r_markdown",
-    "hash": "0",
+    "hash": "3490696999",
     "contents": "",
-    "dirty": true,
+    "dirty": false,
     "created": 1600819865922.0,
     "source_on_save": false,
     "relative_order": 3,
     "properties": {
         "tempName": "Untitled1",
         "cursorPosition": "33,445",
-        "scrollLine": "4"
+        "scrollLine": "0"
     },
     "folds": "",
-    "lastKnownWriteTime": 1600822337,
+    "lastKnownWriteTime": 1600831312,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1600822353301,
+    "last_content_update": 1600831312,
     "read_only": false,
     "read_only_alternatives": []
 }
