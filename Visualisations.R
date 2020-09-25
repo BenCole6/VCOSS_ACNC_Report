@@ -13,7 +13,9 @@ p_load(ggplot2,
        gridExtra,
        rgdal,
        geosphere,
-       mapproj)
+       mapproj,
+       ggalluvial,
+       ggrepel)
 
 VCOSS_colours <- c("#ea5d0a", "#4b55a1", "#f6a400", "black", "grey50")
 
@@ -858,4 +860,91 @@ ggsave(plot = gg_charcount_postcode_metro,
        height = 15, width = 18,
        units = "in", dpi = 1000)
 
-beepr::beep(5)
+
+
+employee_expense_proportions_by_year <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
+                                                           Year, VCOSS_charitysize),
+                                                  total_gross_income = sum(total_gross_income, na.rm = TRUE),
+                                                  total_employee_expenses = sum(employee_expenses, na.rm = TRUE),
+                                                  proportion = total_employee_expenses / total_gross_income)
+
+gg_employee_expense_proportions_by_year <- ggplot(employee_expense_proportions_by_year,
+                                                  aes(x = Year, y = proportion,
+                                                      colour = VCOSS_charitysize, group = VCOSS_charitysize)) +
+  geom_line() +
+  geom_point() +
+  scale_y_continuous("Percent of Total Gross Income",
+                     limits = c(0, 1),
+                     labels = percent,
+                     expand = expansion(c(0.025, 0.025))) +
+  scale_x_discrete(expand = expansion(c(0.05, 0.05))) +
+  scale_colour_manual("VCOSS defined\ncharity size",
+                      values = c(VCOSS_colours, "cyan3")) +
+  labs(title = "Victorian Charities Spending on Employees",
+       subtitle = "Percent of Total Gross Income spent on Employee Expenses") +
+  theme_minimal()
+
+ggsave(plot = gg_employee_expense_proportions_by_year,
+       filename = "R_Visualisations/metromap_totalcharities_postcode.png",
+       height = 10, width = 12,
+       units = "in", dpi = 750)
+
+
+VCOSS_ACNC_2018 <- filter(VCOSS_ACNC_Datasets_Combined,
+                          Year == 2018)
+
+volunteer_breakdown <- summarise(group_by(VCOSS_ACNC_2018,
+                                          main_activity, cleaned_charitysize, VCOSS_charitysize),
+                                 total_volunteers = sum(staff_volunteers))
+
+levels(volunteer_breakdown$cleaned_charitysize) <- c("S", "M", "L")
+
+volunteer_breakdown$cleaned_charitysize <- factor(volunteer_breakdown$cleaned_charitysize,
+                                                  labels = c("Small", "Medium", "Large"))
+
+levels(volunteer_breakdown$VCOSS_charitysize) <- c("Extra Small", "Small", "Medium",
+                                                   "Large", "Extra Large", "Extra Extra Large")
+
+gg_volunteers_mainact_charsize <- ggplot(volunteer_breakdown,
+                                         aes(y = total_volunteers,
+                                             axis1 = main_activity,
+                                             axis2 = VCOSS_charitysize,
+                                             fill = fct_rev(VCOSS_charitysize))) +
+  geom_alluvium(colour = "grey50") +
+  geom_stratum(fill = "aliceblue", colour = "grey80",
+               width = 1/4) +
+  geom_fit_text(stat = "stratum",
+                aes(label = paste(after_stat(stratum),
+                                  "charities",
+                                  "\n\n",
+                                  comma(count, 1), "volunteers")),
+                width = 1/5, reflow = TRUE,
+                show.legend = FALSE) +
+  scale_x_discrete(limits = c("Main activity", "VCOSS charity size"),
+                   breaks = rev(c("Main activity", "Charity size", "VCOSS charity size")),
+                   expand = expansion(c(0.025, 0.025)),
+                   position = "top") +
+  scale_y_continuous("", labels = NULL,
+                     expand = expansion(c(0, 0))) +
+  scale_fill_manual("VCOSS charity size",
+                    values = c(VCOSS_colours[1:3], "cyan3", "green3", "yellow2"),
+                    guide = guide_legend(reverse = TRUE)) +
+  labs(title = "Where volunteers worked in Victorian community service charities in 2018",
+       subtitle = "Based on VCOSS defined charity sizes",
+       caption = paste(sep = "\n",
+                       "VCOSS defines charity sizes based on Total Gross Income:",
+                       "Extra Small: < $50,000",
+                       "Small: >= $50,000 & < $250,000",
+                       "Medium: >= $250,000 & < $1m",
+                       "Large: >= $1m & < $10m",
+                       "Extra Large: >= $10m & < $100m",
+                       "Extra Extra Large: >= $100m")) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.caption.position = "plot")
+
+ggsave(plot = gg_volunteers_mainact_charsize,
+       filename = "R_Visualisations/sankey_volunteers_mainact_VCOSScharsize_2018.png",
+       height = 10, width = 12,
+       units = "in", dpi = 750)

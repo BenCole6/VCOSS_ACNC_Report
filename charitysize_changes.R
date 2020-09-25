@@ -1,3 +1,5 @@
+source("Visualisations.R")
+
 charityname_VCOSScharitysize <- summarise(group_by(VCOSS_ACNC_Datasets_Combined,
                                                    charity_name, Year, VCOSS_charitysize),
                                           count = n())
@@ -81,7 +83,7 @@ gg_changing_charitysizes_bysize <- ggplot(changing_charitysizes_bysize,
   labs(title = "Changing charity sizes in Victorian community service sector",
        subtitle = "Total number of charities that changed their VCOSS-defined charity size between years",
        caption = paste(sep = "\n",
-                       "VCOSS defined charity sizes based on Total Gross Income:",
+                       "VCOSS defines charity sizes based on Total Gross Income:",
                        "Extra Small: < $50,000",
                        "Small: >= $50,000 & < $250,000",
                        "Medium: >= $250,000 & < $1m",
@@ -176,7 +178,7 @@ gg_change_direction_year <- ggplot(filter(change_direction_year,
   labs(title = "Types of changes in charity size of Victorian community service sector charities",
        subtitle = "Number of charities that changed their VCOSS-defined charity size between years",
        caption = paste(sep = "\n",
-                       "VCOSS defined charity sizes based on Total Gross Income:",
+                       "VCOSS defines charity sizes based on Total Gross Income:",
                        "Extra Small: < $50,000",
                        "Small: >= $50,000 & < $250,000",
                        "Medium: >= $250,000 & < $1m",
@@ -198,3 +200,95 @@ ggsave(gg_change_direction_year,
        height = 12, width = 15,
        units = "in", dpi = 750)
 
+
+gg_alluv_change_direction_year <- ggplot(change_direction_year,
+                                         aes(y = count,
+                                             axis1 = previous_size,
+                                             axis2 = new_size,
+                                             fill = change_desc)) +
+  geom_alluvium(colour = "grey50") +
+  geom_stratum(fill = "aliceblue",
+               colour = "grey80") +
+  geom_fit_text(stat = "stratum",
+                aes(label = paste(sep = "\n",
+                                  comma(count, 1),
+                                  after_stat(stratum),
+                                  "charities")),
+                width = 1/7, min.size = 6,
+                show.legend = FALSE) +
+  scale_fill_manual("Size change",
+                    values = c(blue_grad, orange_grad)) +
+  scale_x_discrete(limits = c("Size in\nprevious year", "Size in\ncurrent year"),
+                   expand = c(0.025, 0.025)) +
+  scale_y_continuous("", labels = NULL,
+                     expand = expansion(c(0.0125, 0.0125))) +
+  labs(title = "Changes in charity sizes in Victorian community service sector",
+       subtitle = "Based on VCOSS defined charity sizes",
+       caption = paste(sep = "\n",
+                       "VCOSS defines charity sizes based on Total Gross Income:",
+                       "Extra Small: < $50,000",
+                       "Small: >= $50,000 & < $250,000",
+                       "Medium: >= $250,000 & < $1m",
+                       "Large: >= $1m & < $10m",
+                       "Extra Large: >= $10m & < $100m",
+                       "Extra Extra Large: >= $100m")) +
+  facet_rep_wrap(~Year,
+                 scales = "free_y",
+                 repeat.tick.labels = "x") +
+  theme_minimal() +
+  theme(plot.margin = unit(c(5, 5, 5, 5), "mm"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(colour = "grey80",
+                                        fill = "aliceblue"),
+        plot.caption.position = "plot")
+  
+ggsave(gg_alluv_change_direction_year,
+       filename = "R_Visualisations/sankey_changing_charitysizes_by_type_year.png",
+       height = 12, width = 12,
+       units = "in", dpi = 750)
+
+gg_alluv_change_direction_2018 <- ggplot(filter(change_direction_year,
+                                                Year == 2018),
+                                         aes(y = count,
+                                             axis1 = previous_size,
+                                             axis2 = new_size,
+                                             fill = change_desc)) +
+  geom_alluvium(colour = "grey50") +
+  geom_stratum(fill = "aliceblue",
+               colour = "grey80") +
+  geom_fit_text(stat = "stratum",
+                aes(label = paste(comma(count, 1),
+                                  after_stat(stratum),
+                                  "charities")),
+                width = 1/4, min.size = 6, reflow = TRUE,
+                show.legend = FALSE) +
+  scale_fill_manual("Size change",
+                    values = c(blue_grad, orange_grad)) +
+  scale_x_discrete(limits = c("Size in 2017", "Size in 2018"),
+                   expand = c(0.025, 0.025),
+                   position = "top") +
+  scale_y_continuous("", labels = NULL,
+                     expand = expansion(c(0.0125, 0.0125))) +
+  labs(title = "Changes in charity sizes in Victorian community service sector in 2018",
+       subtitle = "Based on VCOSS defined charity sizes",
+       caption = paste(sep = "\n",
+                       "VCOSS defines charity sizes based on Total Gross Income:",
+                       "Extra Small: < $50,000",
+                       "Small: >= $50,000 & < $250,000",
+                       "Medium: >= $250,000 & < $1m",
+                       "Large: >= $1m & < $10m",
+                       "Extra Large: >= $10m & < $100m",
+                       "Extra Extra Large: >= $100m")) +
+  theme_minimal() +
+  theme(plot.margin = unit(c(5, 5, 5, 5), "mm"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.caption.position = "plot")
+
+ggsave(gg_alluv_change_direction_2018,
+       filename = "R_Visualisations/sankey_changing_charitysizes_by_type_2018.png",
+       height = 12, width = 12,
+       units = "in", dpi = 750)
+
+beepr::beep(5)
